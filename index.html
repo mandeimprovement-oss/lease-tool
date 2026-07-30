@@ -1,1 +1,1357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lease Row Builder — M&E Home Improvement</title>
+<style>
+  :root {
+    --paper: #faf6ef;
+    --ink: #252119;
+    --sub: #5c5548;
+    --kraft: #b8873f;
+    --kraft-deep: #8a6329;
+    --rule: #ddd2bc;
+    --card: #ffffff;
+    --forest: #3c5a41;
+    --rust: #a8452c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    padding-bottom: 80px;
+  }
+  header {
+    padding: 28px 20px 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  header h1 {
+    font-family: var(--serif);
+    font-size: 26px;
+    margin: 0 0 4px;
+    letter-spacing: .2px;
+  }
+  header p { margin: 0; color: var(--sub); font-size: 14px; }
 
+  .ledger {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--ink);
+    color: var(--paper);
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    border-bottom: 3px solid var(--kraft);
+  }
+  .ledger .cell {
+    flex: 1;
+    min-width: 140px;
+    padding: 10px 16px;
+    border-right: 1px solid #3a352b;
+  }
+  .ledger .cell:last-child { border-right: none; }
+  .ledger .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #c9c2b0; }
+  .ledger .val { font-family: var(--mono); font-size: 17px; margin-top: 2px; }
+
+  main { max-width: 880px; margin: 0 auto; padding: 20px; }
+
+  .section {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .section > .head {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .section > .head .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--kraft-deep);
+    border: 1px solid var(--kraft);
+    border-radius: 3px;
+    padding: 1px 6px;
+  }
+  .section > .head h2 { font-family: var(--serif); font-size: 17px; margin: 0; }
+  .section > .body { padding: 16px 18px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid.g3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 600px) { .grid, .grid.g3 { grid-template-columns: 1fr; } }
+
+  label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; font-weight: 600; }
+  input, select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: var(--sans);
+    background: #fffdf9;
+    color: var(--ink);
+  }
+  textarea { resize: vertical; min-height: 44px; }
+  .field { margin-bottom: 12px; }
+
+  .hint { font-size: 12px; color: var(--sub); margin-top: 4px; }
+
+  button {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--kraft-deep);
+    background: var(--kraft);
+    color: #fff;
+    padding: 8px 14px;
+  }
+  button.secondary { background: #fff; color: var(--kraft-deep); }
+  button.ghost { background: none; border: 1px solid var(--rule); color: var(--sub); }
+  button.danger { background: none; border: 1px solid var(--rust); color: var(--rust); padding: 8px 12px; font-size: 13px; font-weight: 600; }
+  button.success { background: var(--forest); border-color: var(--forest); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .list-item {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+    position: relative;
+    background: #fffdf9;
+  }
+  .list-item .remove { position: absolute; top: 8px; right: 8px; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+
+  .prop-select-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .prop-select-row select { flex: 1; }
+
+  .output-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+  .output-table th, .output-table td {
+    border: 1px solid var(--rule);
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .output-table th { background: #f4ecdc; font-family: var(--sans); font-size: 11px; color: var(--sub); width: 220px; }
+  .output-table td { white-space: pre-wrap; word-break: break-word; }
+
+  .status { font-size: 12px; margin-top: 8px; color: var(--forest); min-height: 16px; }
+  .status.err { color: var(--rust); }
+
+  .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .toggle-row input[type=checkbox] { width: auto; }
+  .toggle-row label { margin: 0; }
+
+  .pet-rates-box {
+    background: #f4ecdc;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 10px 0 16px;
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .pet-rates-box h4 {
+    margin: 0 0 6px;
+    font-family: var(--serif);
+    font-size: 13px;
+    color: var(--kraft-deep);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pet-rates-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .pet-rates-grid ul {
+    margin: 0;
+    padding-left: 16px;
+  }
+  .pet-rates-grid li {
+    margin-bottom: 2px;
+  }
+  .invalid-field {
+    border: 2px solid #d9364f !important;
+    background: #fff2f4 !important;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Lease Row Builder</h1>
+  <p>Fill this out once per new lease. It builds one row in the exact column order your Autocrat sheet expects — copy it in, run the merge like always.</p>
+</header>
+
+<div class="ledger" id="ledgerStrip"></div>
+
+<main>
+
+  <!-- PROPERTY -->
+  <div class="section">
+    <div class="head"><span class="tag">A · fixed</span><h2>Property</h2></div>
+    <div class="body">
+      <div class="prop-select-row">
+        <select id="propPicker"><option value="">— Loading properties from Google Sheet... —</option></select>
+        <button id="reloadSheetBtn" type="button" class="secondary">Sync Sheet</button>
+        <button id="deleteCustomPropBtn" type="button" class="danger" style="display:none;">Delete Selected</button>
+      </div>
+
+      <div class="grid">
+        <div class="field"><label>Property Address</label><input id="p_address" placeholder="125 McAllister St, Hanover PA 17331"></div>
+        <div class="field"><label>Unit / Floor / Location</label><input id="p_floor" placeholder="Two-Story (1st & 2nd Floor)"></div>
+        <div class="field"><label>Bedrooms</label><input id="p_beds" type="number" min="0"></div>
+        <div class="field"><label>Bathrooms</label><input id="p_baths" type="number" min="0" step="0.5"></div>
+      </div>
+      <div class="field">
+        <label>Included Appliances <span class="hint">(default from sheet — edit if this property differs)</span></label>
+        <textarea id="p_appliances" placeholder="Refrigerator, Stove, Microwave, Washer & Dryer"></textarea>
+      </div>
+      <div class="field">
+        <label>Included Amenities <span class="hint">(default from sheet — edit if this property differs)</span></label>
+        <textarea id="p_amenities" placeholder="1-Car Detached Garage, Private Yard, Driveway Parking"></textarea>
+      </div>
+
+      <div class="grid g3">
+        <div class="field"><label>Electricity</label><select id="p_elec"><option>Tenant</option><option>Management</option></select></div>
+        <div class="field"><label>Gas</label><select id="p_gas"><option>Tenant</option><option>Management</option><option>N/A</option></select></div>
+        <div class="field"><label>Water / Sewer</label><select id="p_water"><option>Tenant</option><option>Management</option></select></div>
+        <div class="field"><label>Trash</label><select id="p_trash"><option>Tenant</option><option>Management</option></select></div>
+        <div class="field"><label>Snow</label><select id="p_snow"><option>Tenant</option><option>Management</option></select></div>
+        <div class="field"><label>Lawn</label><select id="p_lawn"><option>Tenant</option><option>Management</option><option>N/A</option></select></div>
+      </div>
+      <div class="field">
+        <label>Snow responsibility note <span class="hint">(default from sheet — edit if this property differs)</span></label>
+        <input id="p_snownote" placeholder="Walkways & Assigned Parking">
+      </div>
+      <div class="field"><label>Tenant maintenance responsibilities <span class="hint">(default from sheet — edit if this property differs)</span></label>
+        <textarea id="p_maint" style="min-height:70px;"></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="savePropBtn" type="button">Save property preset locally</button>
+        <span class="status" id="propStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEASE TERMS -->
+  <div class="section">
+    <div class="head"><span class="tag">H–J</span><h2>Lease Terms</h2></div>
+    <div class="body">
+      <div class="grid g3">
+        <div class="field"><label>Today's Date</label><input id="l_today" type="date"></div>
+        <div class="field"><label>Lease Term</label>
+          <select id="l_term">
+            <option>Month-to-Month</option><option selected>1 Year</option><option>2 Years</option><option>6 Months</option><option>Custom</option>
+          </select>
+        </div>
+        <div class="field" id="l_termCustomWrap" style="display:none;"><label>Custom term text</label><input id="l_termCustom" placeholder="e.g. 18 Months"></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Lease Start Date</label><input id="l_start" type="date"></div>
+        <div class="field" id="l_endWrap"><label>Lease End Date <span class="hint">(auto-filled from term — override if needed)</span></label><input id="l_end" type="date"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TENANTS -->
+  <div class="section">
+    <div class="head"><span class="tag">K–P</span><h2>Tenants & Occupants</h2></div>
+    <div class="body">
+      <div class="grid">
+        <div class="field"><label>Contact Email</label><input id="t_email" type="email"></div>
+        <div class="field"><label>Contact Phone</label><input id="t_phone"></div>
+      </div>
+
+      <label style="margin-top:8px;">Adult Tenants</label>
+      <div id="adultsList"></div>
+      <button class="ghost" id="addAdultBtn" type="button">+ Add adult tenant</button>
+
+      <label style="margin-top:16px;">Authorized Minors</label>
+      <div id="minorsList"></div>
+      <button class="ghost" id="addMinorBtn" type="button">+ Add minor</button>
+
+      <div class="field" style="margin-top:16px;">
+        <label>Max Occupancy Limit <span class="hint">(auto = adults + minors — override if needed)</span></label>
+        <input id="t_occupancyOverride" type="number" min="0" placeholder="auto">
+      </div>
+    </div>
+  </div>
+
+  <!-- RENT & FEES -->
+  <div class="section">
+    <div class="head"><span class="tag">Q–AC</span><h2>Rent & Fees</h2></div>
+    <div class="body">
+      <div class="grid g3">
+        <div class="field"><label>Monthly Base Rent ($)</label><input id="r_base" type="number" step="0.01"></div>
+        <div class="field"><label>Monthly Pet Rent</label><input id="r_petrent" placeholder="e.g. 70 or type ESA"></div>
+        <div class="field"><label>Security Deposit ($)</label><input id="r_deposit" type="number" step="0.01"></div>
+      </div>
+      <button class="ghost" type="button" id="depositSameBtn" style="margin-bottom:12px;">Set deposit = base rent</button>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="r_prorateToggle">
+        <label for="r_prorateToggle">Lease starts mid-month — needs a prorated first payment</label>
+      </div>
+      <div class="grid" id="prorateFields" style="display:none;">
+        <div class="field"><label>Proration Start Date</label><input id="r_prorateStart" type="date"></div>
+        <div class="field"><label>Proration End Date</label><input id="r_prorateEnd" type="date"></div>
+      </div>
+
+      <div class="grid">
+        <div class="field"><label>First Full Month Rent ($) <span class="hint">(auto = base rent + monthly pet rent)</span></label><input id="r_firstfull" type="number" step="0.01" placeholder="auto"></div>
+        <div class="field"><label>Early Buyout Fee ($) <span class="hint">(auto = base rent)</span></label><input id="r_buyout" type="number" step="0.01" placeholder="auto"></div>
+      </div>
+
+      <div class="field">
+        <label>Charge Garbage Fee?</label>
+        <select id="garbage_yn">
+          <option>No</option><option>Yes</option>
+        </select>
+      </div>
+      <div class="field" id="garbageStartWrap" style="display:none;">
+        <label>Garbage Start Date <span class="hint">(1st day of the month billing starts — window below fills in automatically as a 3-month quarter)</span></label>
+        <input id="r_garbageStart" type="date">
+      </div>
+
+      <div class="grid g3">
+        <div class="field"><label>Garbage Service Window <span class="hint">(auto)</span></label><input id="r_garbagewindow" readonly placeholder="N/A"></div>
+        <div class="field"><label>Garbage Service Fee</label><input id="r_garbagefee" placeholder="81.00"></div>
+        <div class="field"><label>Non-Refundable Pet Fee</label><input id="r_petfee" placeholder="e.g. 250 or type ESA"></div>
+      </div>
+
+      <div class="pet-rates-box">
+        <h4>Standard Pet Fee Reference</h4>
+        <div class="pet-rates-grid">
+          <div>
+            <strong>Monthly Pet Rent:</strong>
+            <ul>
+              <li>1 Dog: $50 / month</li>
+              <li>1 Cat: $40 / month</li>
+              <li>Additional Pet: +$20 / month</li>
+            </ul>
+          </div>
+          <div>
+            <strong>Non-Refundable Pet Fee:</strong>
+            <ul>
+              <li>Base Pet Fee: $300</li>
+              <li>Additional Pet: +$100 extra</li>
+            </ul>
+          </div>
+        </div>
+        <div class="actions" style="margin-top:10px;">
+          <button class="ghost" type="button" id="estimatePetFeesBtn">Auto-calc pet rent &amp; fee from Pets section below</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PETS -->
+  <div class="section">
+    <div class="head"><span class="tag">AK–AM</span><h2>Pets</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Has Pet?</label>
+        <select id="pet_yn">
+          <option>No</option><option>Yes</option><option>Yes - ESA (Approved)</option>
+        </select>
+      </div>
+      <div id="petsList"></div>
+      <button class="ghost" id="addPetBtn" type="button">+ Add pet</button>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="section">
+    <div class="head"><span class="tag">→ row</span><h2>Generate the row & PDF</h2></div>
+    <div class="body">
+      <div class="actions">
+        <button id="buildBtn" type="button">📄 Build & Generate Lease PDF</button>
+        <button id="resetBuildBtn" type="button" class="ghost" style="display:none;">🔄 Start a New Lease</button>
+        <a id="openDriveFolderBtn" href="https://drive.google.com/drive/folders/1Z4ueO6q38DPAbPRP4lG9ip_KPWXIxVDa" target="_blank"><button class="success" type="button">📁 Open Google Drive Folder</button></a>
+        <button class="secondary" id="copyBtn" type="button" disabled>Copy row to clipboard</button>
+        <button class="secondary" id="downloadBtn" type="button" disabled>Download as CSV</button>
+      </div>
+      <div class="status" id="buildStatus"></div>
+      <div style="overflow-x:auto; margin-top:14px;">
+        <table class="output-table" id="outputTable" style="display:none;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody id="outputBody"></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px;">This covers columns A through AN. Leave AO–AR (Merged Doc ID / URL / Status) blank — Autocrat fills those in when you run the merge.</p>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxsxM6zVczJdVunBrPat3zICL87mVHHO7vsS73nA3eS-nAqGXXfkOhVE0k5ojERZ35K/exec";
+const DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Z4ueO6q38DPAbPRP4lG9ip_KPWXIxVDa";
+
+const GOOGLE_SHEET_PROPERTIES_ID = "1Co_rzpZzUDLeTyH7FHIiu0Lpv5I_cESN9ejUDW1BL0s";
+const GOOGLE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_PROPERTIES_ID}/gviz/tq?tqx=out:csv`;
+const CORS_PROXY = "https://api.allorigins.win/raw?url=";
+
+const DEFAULT_APPLIANCES = "Refrigerator, Stove, Microwave";
+const DEFAULT_AMENITIES = "Off-Street Parking, Yard Access";
+const DEFAULT_MAINT = "Keep entryways and walkways clear, replace HVAC filters quarterly (if unit is equipped with central HVAC), test smoke detectors monthly, clean ice/snow from immediate steps, and promptly report any leaks, running toilets, or structural issues to Management.";
+const ESA_TEXT = "$0.00 (ESA/Service Animal)";
+
+const BACKUP_PROPERTY_LIST = [
+  { address: "5318 Carlisle Pk. Apt A New Oxford PA 17350", floor: "Two-Story (1st & 2nd Floor)", beds: "4", baths: "2", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "1 office, 2 assigned parking spots and access to a shared yard.", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5318 Carlisle Pk. Apt B New Oxford PA 17350", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "1.5", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5318 Carlisle Pk. Apt C New Oxford PA 17350", floor: "1st Floor", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer hookups", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5420 Carlisle Pk. Apt A New Oxford PA 17350", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "2", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5420 Carlisle Pk. Apt B New Oxford PA 17350", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5420 Carlisle Pk. Apt C New Oxford PA 17350", floor: "Two-Story (1st & 2nd Floor)", beds: "2", baths: "2", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5420 Carlisle Pk. Apt D New Oxford PA 17350", floor: "1st Floor", beds: "2", baths: "2", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "Private Yard with Storage, 2 Assigned Parking Spots", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "5420 Carlisle Pk. Apt E New Oxford PA 17350", floor: "1st Floor", beds: "3", baths: "2", appliances: "Refrigerator, Stove, Microwave, Dishwasher, Washer & Dryer, Furnace & Air conditioner System", amenities: "2 Assigned Parking Spots, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "627 Frederick St. 1st Floor Hanover PA 17331", floor: "1st Floor", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "Shared Yard, 1 Storage Shed, 2 Assigned Parking Spots", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "627 Frederick St. 2nd Floor, Hanover PA 17331", floor: "2nd Floor", beds: "3", baths: "1.5", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "Shared Yard, 1 Storage Shed, 2 Assigned Parking Spots", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "323 E Walnut St., Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "4", baths: "1.5", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "1 Assigned Parking Spot, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "323 1/2 E Walnut St., Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "2", baths: "2", appliances: "Refrigerator, Stove, Microwave, Dishwasher, Washer & Dryer", amenities: "1 Assigned Parking Spot, Access to Shared Yard", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "112 East Middle St, Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "114 East Middle St, Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "2 Assigned Parking Spots", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "115 High St., Hanover PA 17331", floor: "1st Floor", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "117 High St., Hanover PA 17331", floor: "2nd Floor", beds: "3", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "119 High St., Hanover PA 17331", floor: "1st Floor", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "121 High St., Hanover PA 17331", floor: "2nd Floor", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "123 High St., Hanover PA 17331", floor: "1st Floor", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "125 High St., Hanover PA 17331", floor: "2nd Floor", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "N/A", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "123 Rear McAllister St, Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer", amenities: "1-Car Detached Garage, Shared Yard, Driveway Parking", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "125 McAllister St, Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer, Furnace System", amenities: "1-Car Detached Garage, Private Yard, Driveway Parking", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "123 McAllister St, Hanover PA 17331", floor: "Two-Story (1st & 2nd Floor)", beds: "3", baths: "1.5", appliances: "Refrigerator, Stove, Microwave, Washer & Dryer, Furnace & Air conditioner System", amenities: "1-Car Detached Garage, Shared Yard, Driveway Parking", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "23 West King St., Abbottstown PA 17301", floor: "Single Family", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot, Shared Coin-Operated Laundry in Basement", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "Management", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "25 West King St., Abbottstown PA 17301", floor: "Single Family", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot, Shared Coin-Operated Laundry in Basement", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "Management", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "27 West King St., Abbottstown PA 17301", floor: "Single Family", beds: "2", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot, Shared Coin-Operated Laundry in Basement", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "Management", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "29 West King St., Abbottstown PA 17301", floor: "Single Family", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot, Shared Coin-Operated Laundry in Basement", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "Management", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "31 West King St., Abbottstown PA 17301", floor: "Single Family", beds: "1", baths: "1", appliances: "Refrigerator, Stove, Microwave", amenities: "1 Assigned Parking Spot, Shared Coin-Operated Laundry in Basement", elec: "Tenant", gas: "Tenant", water: "Management", trash: "Management", snow: "Tenant", lawn: "Management", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT },
+  { address: "852 Hartman Ave, Hanover PA 17331", floor: "Single Family", beds: "3", baths: "1", appliances: "Refrigerator, Stove", amenities: "Yard, Driveway Parking", elec: "Tenant", gas: "Tenant", water: "Tenant", trash: "Tenant", snow: "Tenant", lawn: "Tenant", snownote: "Walkways & Assigned Parking", maint: DEFAULT_MAINT }
+];
+
+let googleSheetProperties = [];
+
+const storageProvider = {
+  async get(key) {
+    if (window.storage && typeof window.storage.get === 'function') {
+      return await window.storage.get(key, false);
+    }
+    const val = localStorage.getItem(key);
+    return val !== null ? { value: val } : null;
+  },
+  async set(key, value) {
+    if (window.storage && typeof window.storage.set === 'function') {
+      return await window.storage.set(key, value, false);
+    }
+    localStorage.setItem(key, value);
+  },
+  async delete(key) {
+    if (window.storage && typeof window.storage.delete === 'function') {
+      return await window.storage.delete(key, false);
+    }
+    localStorage.removeItem(key);
+  },
+  async list(prefix) {
+    if (window.storage && typeof window.storage.list === 'function') {
+      return await window.storage.list(prefix);
+    }
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) keys.push(k);
+    }
+    return { keys };
+  }
+};
+
+const COLUMNS = ["TODAY_DATE","PROPERTY_ADDRESS","UNIT_FLOOR_LOCATION","NUMBER_OF_BEDROOMS","NUMBER_OF_BATHROOMS",
+"INCLUDED_APPLIANCES","INCLUDED_AMENITIES","LEASE_TERM_DURATION","LEASE_START_DATE","LEASE_END_DATE",
+"TENANT_1_NAME","CONTACT_EMAIL","CONTACT_PHONE","ADULT_TENANTS_LIST","AUTHORIZED_MINORS_LIST",
+"MAX_OCCUPANCY_LIMIT","MONTHLY_BASE_RENT","MONTHLY_PET_RENT","TOTAL_MONTHLY_RENT","SECURITY_DEPOSIT_AMOUNT",
+"PRORATION_START_DATE","PRORATION_END_DATE","PRORATED_RENT_AMOUNT","FIRST_FULL_MONTH_RENT","GARBAGE_START_DATE",
+"GARBAGE_SERVICE_FEE","NON_REFUNDABLE_PET_FEE","TOTAL_INITIAL_CONSIDERATION","EARLY_BUYOUT_FEE_AMOUNT","ELECTRICITY_RESPONSIBILITY",
+"GAS_RESPONSIBILITY","WATER_SEWER_RESPONSIBILITY","TRASH_RESPONSIBILITY","SNOW_RESPONSIBILITY","LAWN_RESPONSIBILITY",
+"TENANT_MAINTENANCE_RESPONSIBILITIES","HAS_PET_YN","AUTHORIZED_PETS_SUMMARY","PET_DETAILS_BLOCK","TENANT_SIGNATURE_BLOCKS","LEASE_TYPE"];
+
+let adults = [];
+let minors = [];
+let pets = [];
+let idSeq = 0;
+
+function uid() { return 'x' + (idSeq++); }
+function el(id) { return document.getElementById(id); }
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${m}/${d}/${y}`;
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtMoney(val) {
+  if (val === 'N/A' || val === undefined || val === null || val === '') return 'N/A';
+  const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(n)) return val;
+  return '$' + n.toFixed(2);
+}
+
+function parseMoney(str) {
+  if (str === undefined || str === null) return 0;
+  const s = String(str);
+  const m = s.match(/[\d,]+(\.\d+)?/);
+  if (!m) return 0;
+  return parseFloat(m[0].replace(/,/g, '')) || 0;
+}
+
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtGarbageDate(dateObj) {
+  return `${MONTH_ABBR[dateObj.getMonth()]} ${String(dateObj.getDate()).padStart(2, '0')}`;
+}
+function computeGarbageWindow(startISO) {
+  if (!startISO) return '';
+  const [y, m, d] = startISO.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  const end = new Date(y, (m - 1) + 3, 0); // last day of the 3rd month of the quarter
+  return `${fmtGarbageDate(start)} - ${fmtGarbageDate(end)}`;
+}
+
+function computeLeaseEnd(startISO, term) {
+  if (!startISO) return '';
+  const d = new Date(startISO + 'T00:00:00');
+  if (term === '1 Year') { d.setFullYear(d.getFullYear() + 1); }
+  else if (term === '2 Years') { d.setFullYear(d.getFullYear() + 2); }
+  else if (term === '6 Months') { d.setMonth(d.getMonth() + 6); }
+  else { return ''; }
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchGoogleSheetProperties() {
+  const fetchUrl = (url) => fetch(url).then(res => {
+    if (!res.ok) throw new Error("Network response error");
+    return res.text();
+  });
+
+  let text = "";
+  try {
+    text = await fetchUrl(GOOGLE_SHEET_CSV_URL);
+  } catch (err) {
+    try {
+      text = await fetchUrl(CORS_PROXY + encodeURIComponent(GOOGLE_SHEET_CSV_URL));
+    } catch (proxyErr) {
+      googleSheetProperties = BACKUP_PROPERTY_LIST;
+      return false;
+    }
+  }
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 2) {
+    googleSheetProperties = BACKUP_PROPERTY_LIST;
+    return false;
+  }
+
+  const parseCSVLine = (line) => {
+    const arr = [];
+    let quote = false, col = '';
+    for (let c of line) {
+      if (c === '"') { quote = !quote; }
+      else if (c === ',' && !quote) { arr.push(col.replace(/^"|"$/g, '').trim()); col = ''; }
+      else { col += c; }
+    }
+    arr.push(col.replace(/^"|"$/g, '').trim());
+    return arr;
+  };
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toUpperCase().trim());
+
+  const colIdx = {
+    address: headers.indexOf("PROPERTY_ADDRESS"),
+    floor: headers.indexOf("UNIT_FLOOR_LOCATION"),
+    beds: headers.indexOf("NUMBER_OF_BEDROOMS"),
+    baths: headers.indexOf("NUMBER_OF_BATHROOMS"),
+    appliances: headers.indexOf("INCLUDED_APPLIANCES"),
+    amenities: headers.indexOf("INCLUDED_AMENITIES"),
+    elec: headers.indexOf("ELECTRICITY_RESPONSIBILITY"),
+    gas: headers.indexOf("GAS_RESPONSIBILITY"),
+    water: headers.indexOf("WATER_SEWER_RESPONSIBILITY"),
+    trash: headers.indexOf("TRASH_RESPONSIBILITY"),
+    snow: headers.indexOf("SNOW_RESPONSIBILITY"),
+    lawn: headers.indexOf("LAWN_RESPONSIBILITY"),
+    snownote: headers.indexOf("SNOW_NOTE"),
+    maint: headers.indexOf("TENANT_MAINTENANCE_RESPONSIBILITIES")
+  };
+
+  const fetchedList = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCSVLine(lines[i]);
+    const addr = colIdx.address !== -1 ? row[colIdx.address] : row[0];
+    if (addr && addr.trim()) {
+      fetchedList.push({
+        address: addr,
+        floor: colIdx.floor !== -1 ? row[colIdx.floor] : '',
+        beds: colIdx.beds !== -1 ? row[colIdx.beds] : '',
+        baths: colIdx.baths !== -1 ? row[colIdx.baths] : '',
+        appliances: colIdx.appliances !== -1 ? row[colIdx.appliances] : '',
+        amenities: colIdx.amenities !== -1 ? row[colIdx.amenities] : '',
+        elec: colIdx.elec !== -1 ? row[colIdx.elec] : 'Tenant',
+        gas: colIdx.gas !== -1 ? row[colIdx.gas] : 'Tenant',
+        water: colIdx.water !== -1 ? row[colIdx.water] : 'Tenant',
+        trash: colIdx.trash !== -1 ? row[colIdx.trash] : 'Tenant',
+        snow: colIdx.snow !== -1 ? row[colIdx.snow] : 'Tenant',
+        lawn: colIdx.lawn !== -1 ? row[colIdx.lawn] : 'Tenant',
+        snownote: colIdx.snownote !== -1 ? row[colIdx.snownote] : 'Walkways & Assigned Parking',
+        maint: colIdx.maint !== -1 ? row[colIdx.maint] : DEFAULT_MAINT
+      });
+    }
+  }
+
+  if (fetchedList.length > 0) {
+    googleSheetProperties = fetchedList;
+    return true;
+  } else {
+    googleSheetProperties = BACKUP_PROPERTY_LIST;
+    return false;
+  }
+}
+
+async function populatePropertyList() {
+  const picker = el('propPicker');
+  picker.innerHTML = '<option value="">— Loading properties... —</option>';
+
+  const isLive = await fetchGoogleSheetProperties();
+
+  picker.innerHTML = '<option value="">— Select a property —</option>';
+
+  googleSheetProperties.forEach((p, idx) => {
+    const opt = document.createElement('option');
+    opt.value = 'sheet:' + idx;
+    opt.textContent = p.address;
+    picker.appendChild(opt);
+  });
+
+  if (isLive) {
+    el('propStatus').textContent = `Synced live with Google Sheets (${googleSheetProperties.length} properties loaded).`;
+    el('propStatus').className = 'status';
+  } else {
+    el('propStatus').textContent = `Loaded property list (${googleSheetProperties.length} properties ready).`;
+    el('propStatus').className = 'status';
+  }
+
+  try {
+    const listed = await storageProvider.list('property:');
+    if (listed && listed.keys) {
+      for (const k of listed.keys) {
+        const label = k.replace('property:', '');
+        const opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = label + ' (Custom Saved)';
+        picker.appendChild(opt);
+      }
+    }
+  } catch (err) {}
+}
+
+el('reloadSheetBtn').addEventListener('click', populatePropertyList);
+
+function loadSelectedProperty() {
+  const key = el('propPicker').value;
+  const statusEl = el('propStatus');
+  const deleteBtn = el('deleteCustomPropBtn');
+
+  if (!key) {
+    objToPropForm({});
+    statusEl.textContent = '';
+    deleteBtn.style.display = 'none';
+    return;
+  }
+
+  if (key.startsWith('sheet:')) {
+    deleteBtn.style.display = 'none';
+    const idx = parseInt(key.replace('sheet:', ''), 10);
+    if (googleSheetProperties[idx]) {
+      objToPropForm(googleSheetProperties[idx]);
+      statusEl.textContent = 'Autofilled with property data. Edit if needed.';
+      statusEl.className = 'status';
+    }
+    return;
+  }
+
+  deleteBtn.style.display = 'inline-block';
+  storageProvider.get(key).then(res => {
+    if (res && res.value) {
+      objToPropForm(JSON.parse(res.value));
+      statusEl.textContent = 'Loaded from local storage.';
+      statusEl.className = 'status';
+    }
+  }).catch(() => {
+    statusEl.textContent = 'Could not load property.';
+    statusEl.className = 'status err';
+  });
+}
+
+el('propPicker').addEventListener('change', loadSelectedProperty);
+
+el('deleteCustomPropBtn').addEventListener('click', async () => {
+  const key = el('propPicker').value;
+  const statusEl = el('propStatus');
+  if (!key || key.startsWith('sheet:')) return;
+
+  try {
+    await storageProvider.delete(key);
+    statusEl.textContent = 'Custom property deleted successfully.';
+    statusEl.className = 'status';
+    objToPropForm({});
+    await populatePropertyList();
+    el('deleteCustomPropBtn').style.display = 'none';
+  } catch (err) {
+    statusEl.textContent = 'Failed to delete property.';
+    statusEl.className = 'status err';
+  }
+});
+
+function slugify(addr) {
+  return addr.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+}
+
+function propFormToObj() {
+  return {
+    address: el('p_address').value,
+    floor: el('p_floor').value,
+    beds: el('p_beds').value,
+    baths: el('p_baths').value,
+    appliances: el('p_appliances').value,
+    amenities: el('p_amenities').value,
+    elec: el('p_elec').value,
+    gas: el('p_gas').value,
+    water: el('p_water').value,
+    trash: el('p_trash').value,
+    snow: el('p_snow').value,
+    snownote: el('p_snownote').value,
+    lawn: el('p_lawn').value,
+    maint: el('p_maint').value
+  };
+}
+
+function objToPropForm(o) {
+  el('p_address').value = o.address || '';
+  el('p_floor').value = o.floor || '';
+  el('p_beds').value = o.beds || '';
+  el('p_baths').value = o.baths || '';
+  el('p_appliances').value = o.appliances || DEFAULT_APPLIANCES;
+  el('p_amenities').value = o.amenities || DEFAULT_AMENITIES;
+  el('p_elec').value = o.elec || 'Tenant';
+  el('p_gas').value = o.gas || 'Tenant';
+  el('p_water').value = o.water || 'Tenant';
+  el('p_trash').value = o.trash || 'Tenant';
+  el('p_snow').value = o.snow || 'Tenant';
+  el('p_snownote').value = o.snownote || 'Walkways & Assigned Parking';
+  el('p_lawn').value = o.lawn || 'Tenant';
+  el('p_maint').value = o.maint || DEFAULT_MAINT;
+}
+
+el('savePropBtn').addEventListener('click', async () => {
+  const addr = el('p_address').value.trim();
+  const statusEl = el('propStatus');
+  if (!addr) { statusEl.textContent = 'Add a property address first.'; statusEl.className = 'status err'; return; }
+  const key = 'property:' + slugify(addr);
+  try {
+    await storageProvider.set(key, JSON.stringify(propFormToObj()));
+    statusEl.textContent = 'Saved — it will show up in the dropdown next time.';
+    statusEl.className = 'status';
+    await populatePropertyList();
+    el('propPicker').value = key;
+    el('deleteCustomPropBtn').style.display = 'inline-block';
+  } catch (err) {
+    statusEl.textContent = 'Could not save (storage error). Your entries are still filled in below.';
+    statusEl.className = 'status err';
+  }
+});
+
+// ---------- Pet & Fee Logic ----------
+
+function handleEsaInput(e) {
+  if (e.target.value.trim().toUpperCase() === 'ESA') {
+    e.target.value = ESA_TEXT;
+  }
+  updateLedger();
+}
+
+el('r_petrent').addEventListener('input', handleEsaInput);
+el('r_petfee').addEventListener('input', handleEsaInput);
+
+el('pet_yn').addEventListener('change', () => {
+  const petYN = el('pet_yn').value;
+  if (petYN === 'No') {
+    el('r_petrent').value = 'N/A';
+    el('r_petfee').value = 'N/A';
+  } else if (petYN === 'Yes - ESA (Approved)') {
+    el('r_petrent').value = ESA_TEXT;
+    el('r_petfee').value = ESA_TEXT;
+  } else if (el('r_petrent').value === 'N/A') {
+    el('r_petrent').value = '';
+    el('r_petfee').value = '';
+  }
+  updateLedger();
+});
+
+el('garbage_yn').addEventListener('change', () => {
+  const yn = el('garbage_yn').value;
+  if (yn === 'Yes') {
+    el('garbageStartWrap').style.display = 'block';
+    if (el('r_garbagefee').value === 'N/A') el('r_garbagefee').value = '';
+    el('r_garbagewindow').value = computeGarbageWindow(el('r_garbageStart').value);
+  } else {
+    el('garbageStartWrap').style.display = 'none';
+    el('r_garbageStart').value = '';
+    el('r_garbagewindow').value = 'N/A';
+    el('r_garbagefee').value = 'N/A';
+  }
+  updateLedger();
+});
+
+el('r_garbageStart').addEventListener('change', () => {
+  el('r_garbagewindow').value = computeGarbageWindow(el('r_garbageStart').value);
+  updateLedger();
+});
+
+el('estimatePetFeesBtn').addEventListener('click', () => {
+  if (el('pet_yn').value === 'No') {
+    el('buildStatus').textContent = 'Set "Has Pet?" to Yes first.';
+    el('buildStatus').className = 'status err';
+    return;
+  }
+  const named = pets.filter(p => p.type);
+  if (!named.length) {
+    el('buildStatus').textContent = 'Add at least one pet with a Type first.';
+    el('buildStatus').className = 'status err';
+    return;
+  }
+  // First pet priced by type, every additional pet after the first is a flat add-on.
+  const first = (named[0].type || '').trim().toLowerCase();
+  let monthlyBase = first === 'cat' ? 40 : 50; // dog / default = 50
+  let feeBase = 300;
+  const extra = named.length - 1;
+  const monthly = monthlyBase + extra * 20;
+  const fee = feeBase + extra * 100;
+  el('r_petrent').value = monthly.toFixed(2);
+  el('r_petfee').value = fee.toFixed(2);
+  el('buildStatus').textContent = `Estimated from ${named.length} pet(s). Review and adjust if needed.`;
+  el('buildStatus').className = 'status';
+  updateLedger();
+});
+
+// ---------- Adults / Minors / Pets rows ----------
+
+function renderAdults() {
+  const wrap = el('adultsList');
+  wrap.innerHTML = '';
+  adults.forEach((a) => {
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <button type="button" class="remove danger" data-id="${a.id}" data-kind="adult">Remove</button>
+      <div class="grid g3">
+        <div class="field"><label>Full Name</label><input data-field="name" data-id="${a.id}" value="${a.name || ''}"></div>
+        <div class="field"><label>Date of Birth</label><input type="date" data-field="dob" data-id="${a.id}" value="${a.dob || ''}"></div>
+        <div class="field"><label>SSN</label><input data-field="ssn" data-id="${a.id}" value="${a.ssn || ''}" placeholder="xxx-xx-xxxx"></div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('input').forEach(inp => inp.addEventListener('input', onAdultInput));
+  wrap.querySelectorAll('button.remove').forEach(b => b.addEventListener('click', onAdultRemove));
+}
+
+function onAdultInput(e) {
+  const id = e.target.dataset.id, field = e.target.dataset.field;
+  const a = adults.find(x => x.id === id);
+  if (a) a[field] = e.target.value;
+  updateLedger();
+}
+
+function onAdultRemove(e) {
+  const id = e.target.dataset.id;
+  adults = adults.filter(a => a.id !== id);
+  renderAdults();
+  updateLedger();
+}
+
+function renderMinors() {
+  const wrap = el('minorsList');
+  wrap.innerHTML = '';
+  minors.forEach((m) => {
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <button type="button" class="remove danger" data-id="${m.id}">Remove</button>
+      <div class="grid">
+        <div class="field"><label>Full Name</label><input data-field="name" data-id="${m.id}" value="${m.name || ''}"></div>
+        <div class="field"><label>Date of Birth</label><input type="date" data-field="dob" data-id="${m.id}" value="${m.dob || ''}"></div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('input').forEach(inp => inp.addEventListener('input', onMinorInput));
+  wrap.querySelectorAll('button.remove').forEach(b => b.addEventListener('click', onMinorRemove));
+}
+
+function onMinorInput(e) {
+  const id = e.target.dataset.id, field = e.target.dataset.field;
+  const m = minors.find(x => x.id === id);
+  if (m) m[field] = e.target.value;
+  updateLedger();
+}
+
+function onMinorRemove(e) {
+  const id = e.target.dataset.id;
+  minors = minors.filter(m => m.id !== id);
+  renderMinors();
+  updateLedger();
+}
+
+function renderPets() {
+  const wrap = el('petsList');
+  wrap.innerHTML = '';
+  pets.forEach((p) => {
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <button type="button" class="remove danger" data-id="${p.id}">Remove</button>
+      <div class="grid g3">
+        <div class="field"><label>Type</label><input data-field="type" data-id="${p.id}" value="${p.type || ''}" placeholder="Dog / Cat"></div>
+        <div class="field"><label>Breed</label><input data-field="breed" data-id="${p.id}" value="${p.breed || ''}"></div>
+        <div class="field"><label>Name</label><input data-field="name" data-id="${p.id}" value="${p.name || ''}"></div>
+        <div class="field"><label>Weight</label><input data-field="weight" data-id="${p.id}" value="${p.weight || ''}" placeholder="30 lbs"></div>
+        <div class="field"><label>Color</label><input data-field="color" data-id="${p.id}" value="${p.color || ''}"></div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('input').forEach(inp => inp.addEventListener('input', onPetInput));
+  wrap.querySelectorAll('button.remove').forEach(b => b.addEventListener('click', onPetRemove));
+}
+
+function onPetInput(e) {
+  const id = e.target.dataset.id, field = e.target.dataset.field;
+  const p = pets.find(x => x.id === id);
+  if (p) p[field] = e.target.value;
+}
+
+function onPetRemove(e) {
+  const id = e.target.dataset.id;
+  pets = pets.filter(p => p.id !== id);
+  renderPets();
+}
+
+el('addAdultBtn').addEventListener('click', () => { adults.push({ id: uid(), name: '', dob: '', ssn: '' }); renderAdults(); updateLedger(); });
+el('addMinorBtn').addEventListener('click', () => { minors.push({ id: uid(), name: '', dob: '' }); renderMinors(); updateLedger(); });
+el('addPetBtn').addEventListener('click', () => { pets.push({ id: uid(), type: '', breed: '', name: '', weight: '', color: '' }); renderPets(); });
+
+// ---------- Lease term / dates ----------
+
+el('l_term').addEventListener('change', () => {
+  el('l_termCustomWrap').style.display = el('l_term').value === 'Custom' ? 'block' : 'none';
+  const isMTM = el('l_term').value === 'Month-to-Month';
+  el('l_endWrap').style.display = isMTM ? 'none' : 'block';
+  if (isMTM) el('l_end').value = '';
+  syncEndDate();
+});
+
+el('l_start').addEventListener('change', syncEndDate);
+
+function syncEndDate() {
+  const term = el('l_term').value;
+  const start = el('l_start').value;
+  const computed = computeLeaseEnd(start, term);
+  if (computed) el('l_end').value = computed;
+}
+
+el('r_prorateToggle').addEventListener('change', () => {
+  el('prorateFields').style.display = el('r_prorateToggle').checked ? 'grid' : 'none';
+  updateLedger();
+});
+
+el('depositSameBtn').addEventListener('click', () => { el('r_deposit').value = el('r_base').value; updateLedger(); });
+
+['r_base', 'r_petrent', 'r_deposit', 'r_prorateStart', 'r_prorateEnd', 'r_garbagefee', 'r_petfee', 'r_firstfull', 'r_buyout']
+  .forEach(id => el(id).addEventListener('input', updateLedger));
+
+// ---------- Ledger strip (live totals) ----------
+
+function computeTotals() {
+  const base = parseFloat(el('r_base').value) || 0;
+  const petRentNum = parseMoney(el('r_petrent').value);
+  const totalMonthly = base + petRentNum;
+  const deposit = parseFloat(el('r_deposit').value) || 0;
+
+  let prorated = 0;
+  if (el('r_prorateToggle').checked && el('r_prorateStart').value && el('r_prorateEnd').value) {
+    const s = new Date(el('r_prorateStart').value + 'T00:00:00');
+    const en = new Date(el('r_prorateEnd').value + 'T00:00:00');
+    const dim = daysInMonth(s.getFullYear(), s.getMonth() + 1);
+    const dayCount = Math.round((en - s) / 86400000) + 1;
+    prorated = Math.round((totalMonthly / dim) * dayCount * 100) / 100;
+  }
+  const firstFull = el('r_firstfull').value !== '' ? (parseFloat(el('r_firstfull').value) || 0) : totalMonthly;
+  const garbageFee = parseMoney(el('r_garbagefee').value);
+  const petFee = parseMoney(el('r_petfee').value);
+  const totalInitial = Math.round((deposit + garbageFee + firstFull + prorated + petFee) * 100) / 100;
+
+  return { base, totalMonthly, deposit, prorated, firstFull, totalInitial };
+}
+
+function updateLedger() {
+  const t = computeTotals();
+  const occupants = adults.length + minors.length;
+  el('ledgerStrip').innerHTML = `
+    <div class="cell"><div class="label">Total Monthly Rent</div><div class="val">$${t.totalMonthly.toFixed(2)}</div></div>
+    <div class="cell"><div class="label">Prorated First Payment</div><div class="val">${t.prorated ? '$' + t.prorated.toFixed(2) : '—'}</div></div>
+    <div class="cell"><div class="label">Total Due At Move-In</div><div class="val">$${t.totalInitial.toFixed(2)}</div></div>
+    <div class="cell"><div class="label">Occupants</div><div class="val">${occupants || 0}</div></div>
+  `;
+}
+
+// ---------- Build row & Generate PDF via Google Apps Script ----------
+
+function buildRow() {
+  const t = computeTotals();
+
+  const adultsListText = adults.filter(a => a.name).map(a => `${a.name} (DOB: ${fmtDate(a.dob)}, SSN: ${a.ssn || ''})`).join('\n');
+  const minorsListText = minors.filter(m => m.name).length
+    ? minors.filter(m => m.name).map(m => `${m.name} (DOB: ${fmtDate(m.dob)})`).join('\n')
+    : 'None';
+  const signatureBlocks = adults.filter(a => a.name).map((a, i) => `${i + 1}. Name: ${a.name} — Signature: _________________________ Date: _______`).join('\n\n\n');
+
+  const occupancy = el('t_occupancyOverride').value !== '' ? el('t_occupancyOverride').value
+    : String(adults.filter(a => a.name).length + minors.filter(m => m.name).length);
+
+  const petYN = el('pet_yn').value;
+  let petsSummary = 'N/A';
+  let petDetailsBlock = 'N/A';
+
+  if (petYN !== 'No') {
+    if (pets.length) {
+      const counts = {};
+      pets.forEach(p => { const ty = (p.type || 'Pet').trim(); counts[ty] = (counts[ty] || 0) + 1; });
+      petsSummary = Object.entries(counts).map(([ty, c]) => `${c} ${ty}${c > 1 ? 's' : ''}`).join(' and ');
+
+      petDetailsBlock = pets.filter(p => p.name || p.type).map((p, i) =>
+        `Pet #${i + 1}: ${p.type || ''} | Breed: ${p.breed || 'N/A'} | Name: ${p.name || ''} | Weight: ${p.weight || ''} | Color: ${p.color || ''}`
+      ).join('\n');
+    } else {
+      petsSummary = 'None';
+      petDetailsBlock = '';
+    }
+  }
+
+  const isMTM = el('l_term').value === 'Month-to-Month';
+  const term = el('l_term').value === 'Custom' ? el('l_termCustom').value : el('l_term').value;
+
+  const values = {
+    TODAY_DATE: fmtDate(el('l_today').value || todayISO()),
+    PROPERTY_ADDRESS: el('p_address').value,
+    UNIT_FLOOR_LOCATION: el('p_floor').value,
+    NUMBER_OF_BEDROOMS: el('p_beds').value,
+    NUMBER_OF_BATHROOMS: el('p_baths').value,
+    INCLUDED_APPLIANCES: el('p_appliances').value,
+    INCLUDED_AMENITIES: el('p_amenities').value,
+    LEASE_TERM_DURATION: isMTM ? '' : term,
+    LEASE_START_DATE: fmtDate(el('l_start').value),
+    LEASE_END_DATE: isMTM ? '' : fmtDate(el('l_end').value),
+    TENANT_1_NAME: (adults.find(a => a.name) || {}).name || '',
+    CONTACT_EMAIL: el('t_email').value,
+    CONTACT_PHONE: el('t_phone').value,
+    ADULT_TENANTS_LIST: adultsListText,
+    AUTHORIZED_MINORS_LIST: minorsListText,
+    MAX_OCCUPANCY_LIMIT: occupancy,
+    MONTHLY_BASE_RENT: fmtMoney(t.base.toFixed(2)),
+    MONTHLY_PET_RENT: petYN === 'No' ? 'N/A' : fmtMoney(el('r_petrent').value),
+    TOTAL_MONTHLY_RENT: fmtMoney(t.totalMonthly.toFixed(2)),
+    SECURITY_DEPOSIT_AMOUNT: fmtMoney(t.deposit.toFixed(2)),
+    PRORATION_START_DATE: el('r_prorateToggle').checked ? fmtDate(el('r_prorateStart').value) : 'N/A',
+    PRORATION_END_DATE: el('r_prorateToggle').checked ? fmtDate(el('r_prorateEnd').value) : 'N/A',
+    PRORATED_RENT_AMOUNT: el('r_prorateToggle').checked ? fmtMoney(t.prorated.toFixed(2)) : 'N/A',
+    FIRST_FULL_MONTH_RENT: fmtMoney(t.firstFull.toFixed(2)),
+    GARBAGE_START_DATE: el('r_garbagewindow').value || 'N/A',
+    GARBAGE_SERVICE_FEE: el('r_garbagefee').value ? fmtMoney(el('r_garbagefee').value) : 'N/A',
+    NON_REFUNDABLE_PET_FEE: petYN === 'No' ? 'N/A' : fmtMoney(el('r_petfee').value),
+    TOTAL_INITIAL_CONSIDERATION: fmtMoney(t.totalInitial.toFixed(2)),
+    EARLY_BUYOUT_FEE_AMOUNT: fmtMoney(el('r_buyout').value !== '' ? parseFloat(el('r_buyout').value).toFixed(2) : t.base.toFixed(2)),
+    ELECTRICITY_RESPONSIBILITY: el('p_elec').value,
+    GAS_RESPONSIBILITY: el('p_gas').value,
+    WATER_SEWER_RESPONSIBILITY: el('p_water').value,
+    TRASH_RESPONSIBILITY: el('p_trash').value,
+    SNOW_RESPONSIBILITY: el('p_snownote').value ? `${el('p_snow').value} (${el('p_snownote').value})` : el('p_snow').value,
+    LAWN_RESPONSIBILITY: el('p_lawn').value,
+    TENANT_MAINTENANCE_RESPONSIBILITIES: el('p_maint').value || DEFAULT_MAINT,
+    HAS_PET_YN: petYN,
+    AUTHORIZED_PETS_SUMMARY: petsSummary,
+    PET_DETAILS_BLOCK: petDetailsBlock,
+    TENANT_SIGNATURE_BLOCKS: signatureBlocks,
+    LEASE_TYPE: isMTM ? 'Month-to-Month' : 'Fixed-Term'
+  };
+
+  return COLUMNS.map(c => values[c] !== undefined ? values[c] : '');
+}
+
+let lastRow = null;
+let isSubmitting = false;
+let alreadySubmitted = false;
+
+function validateBeforeBuild() {
+  const problems = [];
+  if (!el('p_address').value.trim()) problems.push('Select or type the property address.');
+  if (!el('l_start').value) problems.push('Missing lease start date.');
+  if (el('l_term').value !== 'Month-to-Month' && !el('l_end').value) problems.push('Missing lease end date.');
+  if (!adults.some(a => a.name && a.name.trim())) problems.push('Add at least one adult tenant with a name.');
+  if (!el('r_base').value || parseFloat(el('r_base').value) <= 0) problems.push('Missing Monthly Base Rent.');
+  if (el('garbage_yn').value === 'Yes' && !el('r_garbageStart').value) problems.push('Missing Garbage Start Date (or set "Charge Garbage Fee?" to No).');
+  return problems;
+}
+
+el('buildBtn').addEventListener('click', async () => {
+  if (isSubmitting) return; // blocks rapid double-clicks
+
+  if (alreadySubmitted) {
+    const proceed = confirm('You already generated a row for this lease. Are you sure you want to generate ANOTHER row/PDF with the same data? This could duplicate the lease in the Sheet.');
+    if (!proceed) return;
+  }
+
+  const problems = validateBeforeBuild();
+  if (problems.length) {
+    const statusEl = el('buildStatus');
+    statusEl.innerHTML = '⚠️ ' + problems.join(' ');
+    statusEl.className = 'status err';
+    return;
+  }
+
+  const t0 = computeTotals();
+  const firstTenantName = (adults.find(a => a.name) || {}).name || '(no name)';
+  const tenantCount = adults.filter(a => a.name).length;
+  const summary =
+    `You're about to generate this lease:\n\n` +
+    `Property: ${el('p_address').value || '(no address)'}\n` +
+    `Main tenant: ${firstTenantName}${tenantCount > 1 ? ` (+${tenantCount - 1} more)` : ''}\n` +
+    `Monthly rent: $${t0.base.toFixed(2)}\n` +
+    `Dates: ${fmtDate(el('l_start').value) || '?'} to ${el('l_term').value === 'Month-to-Month' ? 'Month-to-Month (no end date)' : (fmtDate(el('l_end').value) || '?')}\n\n` +
+    `Confirm the details are correct?`;
+  if (!confirm(summary)) return;
+
+  isSubmitting = true;
+  const buildBtn = el('buildBtn');
+  buildBtn.disabled = true;
+  const originalLabel = buildBtn.textContent;
+  buildBtn.textContent = '⏳ Generating...';
+
+  lastRow = buildRow();
+  const tbody = el('outputBody');
+  tbody.innerHTML = '';
+  COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(lastRow[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('outputTable').style.display = 'table';
+  el('copyBtn').disabled = false;
+  el('downloadBtn').disabled = false;
+
+  const statusEl = el('buildStatus');
+  statusEl.textContent = '⏳ Sending data to Google Sheets & compiling PDF... (takes 3-5 seconds)';
+  statusEl.className = 'status';
+
+  let succeeded = false;
+
+  if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
+    try {
+      // Google Apps Script Web Apps don't send back proper CORS headers, so the
+      // browser blocks us from reading the response no matter what we do. mode:
+      // 'no-cors' stops the browser from throwing "Failed to fetch" for that reason —
+      // the request still really gets delivered and the script still runs, we just
+      // can't read what it replied. Genuine connectivity failures (no internet, wrong
+      // URL, deployment deleted) still throw and land in the catch block below.
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ row: lastRow })
+      });
+
+      statusEl.textContent = '✅ Data sent to Google Sheets. Check the Drive folder in a minute or two — Autocrat will generate the PDF automatically.';
+      statusEl.className = 'status';
+      succeeded = true;
+    } catch (err) {
+      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). No row was saved — you can retry.';
+      statusEl.className = 'status err';
+    }
+  } else {
+    statusEl.textContent = 'Row built below. Copy it, then paste into the first empty row of Sheet1 (starting at column A).';
+    statusEl.className = 'status';
+    succeeded = true;
+  }
+
+  isSubmitting = false;
+
+  if (succeeded) {
+    alreadySubmitted = true;
+    buildBtn.textContent = '✅ Lease Generado';
+    buildBtn.disabled = true;
+    el('resetBuildBtn').style.display = 'inline-block';
+    clearDraft();
+  } else {
+    buildBtn.textContent = originalLabel;
+    buildBtn.disabled = false;
+  }
+});
+
+el('resetBuildBtn').addEventListener('click', () => {
+  const proceed = confirm('This will reload the form to start a new lease (anything not saved will be lost). Continue?');
+  if (proceed) { clearDraft(); location.reload(); }
+});
+
+el('copyBtn').addEventListener('click', async () => {
+  if (!lastRow) return;
+  const tsv = lastRow.join('\t');
+  try {
+    await navigator.clipboard.writeText(tsv);
+    el('buildStatus').textContent = 'Copied! Paste into the next empty row of Sheet1, column A.';
+    el('buildStatus').className = 'status';
+  } catch (err) {
+    el('buildStatus').textContent = 'Could not copy automatically — select the table text manually and copy.';
+    el('buildStatus').className = 'status err';
+  }
+});
+
+el('downloadBtn').addEventListener('click', () => {
+  if (!lastRow) return;
+  const csv = COLUMNS.join(',') + '\n' + lastRow.map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(',');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'lease_row.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+// ---------- Live validation (rent field) ----------
+
+function validateRentField() {
+  const f = el('r_base');
+  const n = parseFloat(f.value);
+  if (f.value === '' || isNaN(n) || n <= 0) {
+    f.classList.add('invalid-field');
+  } else {
+    f.classList.remove('invalid-field');
+  }
+}
+
+el('r_base').addEventListener('input', validateRentField);
+
+// ---------- Autosave draft (localStorage) ----------
+
+const DRAFT_KEY = 'meLeaseDraftV1';
+const DRAFT_STATIC_FIELDS = [
+  'p_address','p_floor','p_beds','p_baths','p_appliances','p_amenities',
+  'l_today','l_term','l_termCustom','l_start','l_end',
+  't_email','t_phone','t_occupancyOverride',
+  'r_base','r_petrent','r_deposit','r_prorateToggle','r_prorateStart','r_prorateEnd',
+  'r_garbagewindow','r_garbagefee','r_petfee','r_buyout',
+  'garbage_yn','r_garbageStart',
+  'pet_yn','p_elec','p_gas','p_water','p_trash','p_snow','p_snownote','p_lawn','p_maint'
+];
+
+function saveDraft() {
+  try {
+    const data = { fields: {}, adults, minors, pets };
+    DRAFT_STATIC_FIELDS.forEach(id => {
+      const f = el(id);
+      if (!f) return;
+      data.fields[id] = (f.type === 'checkbox') ? f.checked : f.value;
+    });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  } catch (e) { /* localStorage no disponible - se ignora */ }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+}
+
+function restoreDraftIfAny() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return; }
+  if (!raw) return;
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return; }
+
+  const hasContent = (data.adults && data.adults.some(a => a.name)) ||
+                      (data.fields && Object.values(data.fields).some(v => v));
+  if (!hasContent) return;
+
+  const restore = confirm('An unfinished lease draft was found. Do you want to restore it?');
+  if (!restore) { clearDraft(); return; }
+
+  if (Array.isArray(data.adults) && data.adults.length) adults = data.adults;
+  if (Array.isArray(data.minors)) minors = data.minors;
+  if (Array.isArray(data.pets)) pets = data.pets;
+  renderAdults(); renderMinors(); renderPets();
+
+  if (data.fields) {
+    Object.entries(data.fields).forEach(([id, val]) => {
+      const f = el(id);
+      if (!f) return;
+      if (f.type === 'checkbox') f.checked = !!val;
+      else f.value = val;
+    });
+  }
+  el('garbageStartWrap').style.display = el('garbage_yn').value === 'Yes' ? 'block' : 'none';
+  el('l_termCustomWrap').style.display = el('l_term').value === 'Custom' ? 'block' : 'none';
+  el('l_endWrap').style.display = el('l_term').value === 'Month-to-Month' ? 'none' : 'block';
+  updateLedger();
+}
+
+document.addEventListener('input', () => {
+  clearTimeout(window._draftSaveTimer);
+  window._draftSaveTimer = setTimeout(saveDraft, 600);
+});
+
+// ---------- Init ----------
+
+async function init() {
+  el('l_today').value = todayISO();
+  el('p_maint').value = DEFAULT_MAINT;
+  el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
+  el('p_trash').value = 'Tenant'; el('p_snow').value = 'Tenant'; el('p_lawn').value = 'Tenant';
+  el('r_garbagewindow').value = 'N/A'; el('r_garbagefee').value = 'N/A';
+  adults.push({ id: uid(), name: '', dob: '', ssn: '' });
+  renderAdults(); renderMinors(); renderPets(); updateLedger();
+  await populatePropertyList();
+  restoreDraftIfAny();
+}
+
+init();
+</script>
+</body>
+</html>
