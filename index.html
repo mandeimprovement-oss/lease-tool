@@ -1414,19 +1414,38 @@ let activeLeases = [];
 let lastRenewalRow = null;
 
 function parseCSVText(text) {
-  const lines = text.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim().length > 0);
-  const parseLine = (line) => {
-    const arr = [];
-    let quote = false, col = '';
-    for (let c of line) {
-      if (c === '"') { quote = !quote; }
-      else if (c === ',' && !quote) { arr.push(col.replace(/^"|"$/g, '').trim()); col = ''; }
-      else { col += c; }
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field.trim()); field = '';
+      } else if (c === '\r') {
+        // skip, \n handles the line break
+      } else if (c === '\n') {
+        row.push(field.trim()); field = '';
+        rows.push(row); row = [];
+      } else {
+        field += c;
+      }
     }
-    arr.push(col.replace(/^"|"$/g, '').trim());
-    return arr;
-  };
-  return lines.map(parseLine);
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field.trim()); rows.push(row); }
+
+  return rows.filter(r => r.some(cell => cell.length > 0));
 }
 
 async function fetchActiveLeases() {
