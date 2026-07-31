@@ -392,7 +392,9 @@
     <div class="head"><span class="tag">→ row</span><h2>Generate the row & PDF</h2></div>
     <div class="body">
       <div class="actions">
-        <button id="buildBtn" type="button">📄 Build & Generate Lease PDF</button>
+        <button id="buildBtn" type="button">📄 Review Before Generating</button>
+        <button id="confirmSendBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate PDF</button>
+        <button id="backToEditBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
         <button id="resetBuildBtn" type="button" class="ghost" style="display:none;">🔄 Start a New Lease</button>
         <a id="openDriveFolderBtn" href="https://drive.google.com/drive/folders/1Z4ueO6q38DPAbPRP4lG9ip_KPWXIxVDa" target="_blank"><button class="success" type="button">📁 Open Google Drive Folder</button></a>
         <button class="secondary" id="copyBtn" type="button" disabled>Copy row to clipboard</button>
@@ -452,7 +454,9 @@
     <div class="head"><span class="tag">→ row</span><h2>Generate the Renewal Letter</h2></div>
     <div class="body">
       <div class="actions">
-        <button id="buildRenewalBtn" type="button">📄 Build & Generate Renewal Letter</button>
+        <button id="buildRenewalBtn" type="button">📄 Review Before Generating</button>
+        <button id="confirmRenewalBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate Renewal Letter</button>
+        <button id="backToEditRenewalBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
         <button id="resetRenewalBtn" type="button" class="ghost" style="display:none;">🔄 Start Another Renewal</button>
         <button class="secondary" id="copyRenewalBtn" type="button" disabled>Copy row to clipboard</button>
       </div>
@@ -1205,14 +1209,26 @@ function validateBeforeBuild() {
   return problems;
 }
 
-el('buildBtn').addEventListener('click', async () => {
-  if (isSubmitting) return; // blocks rapid double-clicks
+function setLeaseFormDisabled(disabled) {
+  const main = el('leaseMain');
+  main.querySelectorAll('input, select, textarea, button').forEach(node => {
+    if (['buildBtn', 'confirmSendBtn', 'backToEditBtn', 'resetBuildBtn', 'copyBtn', 'downloadBtn'].includes(node.id)) return;
+    node.disabled = disabled;
+  });
+}
 
-  if (alreadySubmitted) {
-    const proceed = confirm('You already generated a row for this lease. Are you sure you want to generate ANOTHER row/PDF with the same data? This could duplicate the lease in the Sheet.');
-    if (!proceed) return;
-  }
+function renderLeaseReviewTable(row) {
+  const tbody = el('outputBody');
+  tbody.innerHTML = '';
+  COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(row[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('outputTable').style.display = 'table';
+}
 
+el('buildBtn').addEventListener('click', () => {
   const problems = validateBeforeBuild();
   if (problems.length) {
     const statusEl = el('buildStatus');
@@ -1221,33 +1237,44 @@ el('buildBtn').addEventListener('click', async () => {
     return;
   }
 
-  const t0 = computeTotals();
-  const firstTenantName = (adults.find(a => a.name) || {}).name || '(no name)';
-  const tenantCount = adults.filter(a => a.name).length;
-  const summary =
-    `You're about to generate this lease:\n\n` +
-    `Property: ${el('p_address').value || '(no address)'}\n` +
-    `Main tenant: ${firstTenantName}${tenantCount > 1 ? ` (+${tenantCount - 1} more)` : ''}\n` +
-    `Monthly rent: $${t0.base.toFixed(2)}\n` +
-    `Dates: ${fmtDate(el('l_start').value) || '?'} to ${el('l_term').value === 'Month-to-Month' ? 'Month-to-Month (no end date)' : (fmtDate(el('l_end').value) || '?')}\n\n` +
-    `Confirm the details are correct?`;
-  if (!confirm(summary)) return;
+  lastRow = buildRow();
+  renderLeaseReviewTable(lastRow);
+  setLeaseFormDisabled(true);
+
+  el('buildBtn').style.display = 'none';
+  el('confirmSendBtn').style.display = 'inline-block';
+  el('backToEditBtn').style.display = 'inline-block';
+
+  const statusEl = el('buildStatus');
+  statusEl.innerHTML = '👀 <strong>Nothing has been sent yet.</strong> Review every row below (including Pets and Rent & Fees) — if anything looks wrong, click "Back to Edit". Only "Confirm & Generate PDF" actually creates the lease.';
+  statusEl.className = 'status';
+});
+
+el('backToEditBtn').addEventListener('click', () => {
+  setLeaseFormDisabled(false);
+  el('buildBtn').style.display = 'inline-block';
+  el('confirmSendBtn').style.display = 'none';
+  el('backToEditBtn').style.display = 'none';
+  el('outputTable').style.display = 'none';
+  el('buildStatus').textContent = '';
+  el('buildStatus').className = 'status';
+});
+
+el('confirmSendBtn').addEventListener('click', async () => {
+  if (isSubmitting) return;
+
+  if (alreadySubmitted) {
+    const proceed = confirm('You already generated a row for this lease. Are you sure you want to generate ANOTHER row/PDF with the same data? This could duplicate the lease in the Sheet.');
+    if (!proceed) return;
+  }
 
   isSubmitting = true;
-  const buildBtn = el('buildBtn');
-  buildBtn.disabled = true;
-  const originalLabel = buildBtn.textContent;
-  buildBtn.textContent = '⏳ Generating...';
+  const confirmBtn = el('confirmSendBtn');
+  confirmBtn.disabled = true;
+  el('backToEditBtn').style.display = 'none';
+  const originalLabel = confirmBtn.textContent;
+  confirmBtn.textContent = '⏳ Generating...';
 
-  lastRow = buildRow();
-  const tbody = el('outputBody');
-  tbody.innerHTML = '';
-  COLUMNS.forEach((c, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<th>${c}</th><td>${(lastRow[i] || '').toString().replace(/</g, '&lt;')}</td>`;
-    tbody.appendChild(tr);
-  });
-  el('outputTable').style.display = 'table';
   el('copyBtn').disabled = false;
   el('downloadBtn').disabled = false;
 
@@ -1289,13 +1316,14 @@ el('buildBtn').addEventListener('click', async () => {
 
   if (succeeded) {
     alreadySubmitted = true;
-    buildBtn.textContent = '✅ Lease Generado';
-    buildBtn.disabled = true;
+    confirmBtn.textContent = '✅ Lease Generado';
+    confirmBtn.disabled = true;
     el('resetBuildBtn').style.display = 'inline-block';
     clearDraft();
   } else {
-    buildBtn.textContent = originalLabel;
-    buildBtn.disabled = false;
+    confirmBtn.textContent = originalLabel;
+    confirmBtn.disabled = false;
+    el('backToEditBtn').style.display = 'inline-block';
   }
 });
 
@@ -1582,14 +1610,26 @@ function validateRenewalBeforeBuild() {
 let isSubmittingRenewal = false;
 let alreadySubmittedRenewal = false;
 
-el('buildRenewalBtn').addEventListener('click', async () => {
-  if (isSubmittingRenewal) return;
+function setRenewalFormDisabled(disabled) {
+  const main = el('renewalMain');
+  main.querySelectorAll('input, select, textarea, button').forEach(node => {
+    if (['buildRenewalBtn', 'confirmRenewalBtn', 'backToEditRenewalBtn', 'resetRenewalBtn', 'copyRenewalBtn'].includes(node.id)) return;
+    node.disabled = disabled;
+  });
+}
 
-  if (alreadySubmittedRenewal) {
-    const proceed = confirm('You already generated a renewal letter this session. Generate ANOTHER one with the same data? This could duplicate the entry in the Renewals sheet.');
-    if (!proceed) return;
-  }
+function renderRenewalReviewTable(row) {
+  const tbody = el('renewalOutputBody');
+  tbody.innerHTML = '';
+  RENEWAL_COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(row[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('renewalOutputTable').style.display = 'table';
+}
 
+el('buildRenewalBtn').addEventListener('click', () => {
   const problems = validateRenewalBeforeBuild();
   if (problems.length) {
     const statusEl = el('renewalBuildStatus');
@@ -1598,23 +1638,44 @@ el('buildRenewalBtn').addEventListener('click', async () => {
     return;
   }
 
-  if (!confirm(`Generate the renewal letter for ${el('ren_tenant').value} at ${el('ren_property').value}?`)) return;
+  lastRenewalRow = buildRenewalRow();
+  renderRenewalReviewTable(lastRenewalRow);
+  setRenewalFormDisabled(true);
+
+  el('buildRenewalBtn').style.display = 'none';
+  el('confirmRenewalBtn').style.display = 'inline-block';
+  el('backToEditRenewalBtn').style.display = 'inline-block';
+
+  const statusEl = el('renewalBuildStatus');
+  statusEl.innerHTML = '👀 <strong>Nothing has been sent yet.</strong> Review every row below — if anything looks wrong, click "Back to Edit". Only "Confirm & Generate" actually creates the letter.';
+  statusEl.className = 'status';
+});
+
+el('backToEditRenewalBtn').addEventListener('click', () => {
+  setRenewalFormDisabled(false);
+  el('buildRenewalBtn').style.display = 'inline-block';
+  el('confirmRenewalBtn').style.display = 'none';
+  el('backToEditRenewalBtn').style.display = 'none';
+  el('renewalOutputTable').style.display = 'none';
+  el('renewalBuildStatus').textContent = '';
+  el('renewalBuildStatus').className = 'status';
+});
+
+el('confirmRenewalBtn').addEventListener('click', async () => {
+  if (isSubmittingRenewal) return;
+
+  if (alreadySubmittedRenewal) {
+    const proceed = confirm('You already generated a renewal letter this session. Generate ANOTHER one with the same data? This could duplicate the entry in the Renewals sheet.');
+    if (!proceed) return;
+  }
 
   isSubmittingRenewal = true;
-  const buildBtn = el('buildRenewalBtn');
-  buildBtn.disabled = true;
-  const originalLabel = buildBtn.textContent;
-  buildBtn.textContent = '⏳ Generating...';
+  const confirmBtn = el('confirmRenewalBtn');
+  confirmBtn.disabled = true;
+  el('backToEditRenewalBtn').style.display = 'none';
+  const originalLabel = confirmBtn.textContent;
+  confirmBtn.textContent = '⏳ Generating...';
 
-  lastRenewalRow = buildRenewalRow();
-  const tbody = el('renewalOutputBody');
-  tbody.innerHTML = '';
-  RENEWAL_COLUMNS.forEach((c, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<th>${c}</th><td>${(lastRenewalRow[i] || '').toString().replace(/</g, '&lt;')}</td>`;
-    tbody.appendChild(tr);
-  });
-  el('renewalOutputTable').style.display = 'table';
   el('copyRenewalBtn').disabled = false;
 
   const statusEl = el('renewalBuildStatus');
@@ -1643,12 +1704,13 @@ el('buildRenewalBtn').addEventListener('click', async () => {
 
   if (succeeded) {
     alreadySubmittedRenewal = true;
-    buildBtn.textContent = '✅ Renewal Generado';
-    buildBtn.disabled = true;
+    confirmBtn.textContent = '✅ Renewal Generado';
+    confirmBtn.disabled = true;
     el('resetRenewalBtn').style.display = 'inline-block';
   } else {
-    buildBtn.textContent = originalLabel;
-    buildBtn.disabled = false;
+    confirmBtn.textContent = originalLabel;
+    confirmBtn.disabled = false;
+    el('backToEditRenewalBtn').style.display = 'inline-block';
   }
 });
 
