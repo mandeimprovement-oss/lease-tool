@@ -1430,10 +1430,24 @@ function parseCSVText(text) {
 }
 
 async function fetchActiveLeases() {
+  const fetchUrl = (url) => fetch(url).then(res => {
+    if (!res.ok) throw new Error("Network response error");
+    return res.text();
+  });
+
+  let text = "";
   try {
-    const res = await fetch(LEASE_SHEET_CSV_URL);
-    if (!res.ok) throw new Error('Network error');
-    const text = await res.text();
+    text = await fetchUrl(LEASE_SHEET_CSV_URL);
+  } catch (err) {
+    try {
+      text = await fetchUrl(CORS_PROXY + encodeURIComponent(LEASE_SHEET_CSV_URL));
+    } catch (proxyErr) {
+      activeLeases = [];
+      return false;
+    }
+  }
+
+  try {
     const rows = parseCSVText(text);
     if (rows.length < 2) { activeLeases = []; return false; }
     const headers = rows[0].map(h => h.toUpperCase().trim());
