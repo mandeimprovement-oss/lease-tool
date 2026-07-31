@@ -302,6 +302,22 @@
     </div>
   </div>
 
+  <!-- PETS -->
+  <div class="section">
+    <div class="head"><span class="tag">AK–AM</span><h2>Pets</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Has Pet?</label>
+        <select id="pet_yn">
+          <option>No</option><option>Yes</option><option>Yes - ESA (Approved)</option>
+        </select>
+      </div>
+      <div id="petsList"></div>
+      <button class="ghost" id="addPetBtn" type="button">+ Add pet</button>
+      <p class="hint" id="addPetHint" style="display:none;margin-top:8px;">Set "Has Pet?" to Yes (or Yes - ESA) to add pets.</p>
+    </div>
+  </div>
+
   <!-- RENT & FEES -->
   <div class="section">
     <div class="head"><span class="tag">Q–AC</span><h2>Rent & Fees</h2></div>
@@ -368,21 +384,6 @@
         </div>
       </div>
 
-    </div>
-  </div>
-
-  <!-- PETS -->
-  <div class="section">
-    <div class="head"><span class="tag">AK–AM</span><h2>Pets</h2></div>
-    <div class="body">
-      <div class="field">
-        <label>Has Pet?</label>
-        <select id="pet_yn">
-          <option>No</option><option>Yes</option><option>Yes - ESA (Approved)</option>
-        </select>
-      </div>
-      <div id="petsList"></div>
-      <button class="ghost" id="addPetBtn" type="button">+ Add pet</button>
     </div>
   </div>
 
@@ -868,11 +869,19 @@ function handleEsaInput(e) {
 el('r_petrent').addEventListener('input', handleEsaInput);
 el('r_petfee').addEventListener('input', handleEsaInput);
 
+function updateAddPetAvailability() {
+  const petYN = el('pet_yn').value;
+  const disallowed = petYN === 'No';
+  el('addPetBtn').disabled = disallowed;
+  el('addPetHint').style.display = disallowed ? 'block' : 'none';
+}
+
 el('pet_yn').addEventListener('change', () => {
   const petYN = el('pet_yn').value;
   if (petYN === 'No') {
     el('r_petrent').value = 'N/A';
     el('r_petfee').value = 'N/A';
+    if (pets.length) { pets.length = 0; renderPets(); }
   } else if (petYN === 'Yes - ESA (Approved)') {
     el('r_petrent').value = ESA_TEXT;
     el('r_petfee').value = ESA_TEXT;
@@ -880,6 +889,7 @@ el('pet_yn').addEventListener('change', () => {
     el('r_petrent').value = '';
     el('r_petfee').value = '';
   }
+  updateAddPetAvailability();
   updateLedger();
 });
 
@@ -1688,6 +1698,7 @@ async function init() {
   renderAdults(); renderMinors(); renderPets(); updateLedger();
   await populatePropertyList();
   restoreDraftIfAny();
+  updateAddPetAvailability();
 }
 
 init();
