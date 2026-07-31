@@ -124,6 +124,9 @@
   button.success { background: var(--forest); border-color: var(--forest); color: #fff; }
   button:disabled { opacity: .5; cursor: not-allowed; }
 
+  .mode-btn { background: #fff; color: var(--sub); border: 1px solid var(--rule); flex: 1; padding: 10px 14px; font-size: 14px; }
+  .mode-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
   .list-item {
     border: 1px solid var(--rule);
     border-radius: 4px;
@@ -198,9 +201,14 @@
   <p>Fill this out once per new lease. It builds one row in the exact column order your Autocrat sheet expects — copy it in, run the merge like always.</p>
 </header>
 
+<div class="mode-toggle" style="max-width:880px;margin:16px auto 0;padding:0 20px;display:flex;gap:8px;">
+  <button type="button" id="modeNewBtn" class="mode-btn">📝 New Lease</button>
+  <button type="button" id="modeRenewalBtn" class="mode-btn">🔄 Renewal</button>
+</div>
+
 <div class="ledger" id="ledgerStrip"></div>
 
-<main>
+<main id="leaseMain">
 
   <!-- PROPERTY -->
   <div class="section">
@@ -397,6 +405,63 @@
         </table>
       </div>
       <p class="hint" style="margin-top:10px;">This covers columns A through AN. Leave AO–AR (Merged Doc ID / URL / Status) blank — Autocrat fills those in when you run the merge.</p>
+    </div>
+  </div>
+
+</main>
+
+<main id="renewalMain" style="display:none;">
+
+  <!-- SELECT LEASE -->
+  <div class="section">
+    <div class="head"><span class="tag">1</span><h2>Select Lease to Renew</h2></div>
+    <div class="body">
+      <div class="prop-select-row">
+        <select id="renewalPicker"><option value="">— Loading active leases... —</option></select>
+        <button id="renewalReloadBtn" type="button" class="secondary">Sync Sheet</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Lease ID</label><input id="ren_leaseId" readonly></div>
+        <div class="field"><label>Property Address</label><input id="ren_property" readonly></div>
+        <div class="field"><label>Tenant</label><input id="ren_tenant" readonly></div>
+        <div class="field"><label>Current Lease End Date</label><input id="ren_currentEnd" readonly></div>
+      </div>
+      <span class="status" id="renewalPickStatus"></span>
+    </div>
+  </div>
+
+  <!-- RENEWAL TERMS -->
+  <div class="section">
+    <div class="head"><span class="tag">2</span><h2>Renewal Terms</h2></div>
+    <div class="body">
+      <div class="grid g3">
+        <div class="field"><label>Letter Date (today)</label><input id="ren_today" type="date"></div>
+        <div class="field"><label>Pet Fee ($/mo, if applicable)</label><input id="ren_petfee" type="number" step="0.01" placeholder="0"></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label>New Rent — 12 Month Option ($)</label><input id="ren_rent12" type="number" step="0.01"></div>
+        <div class="field"><label>New Rent — Month-to-Month Option ($)</label><input id="ren_rentmtm" type="number" step="0.01"></div>
+      </div>
+      <div class="hint">Totals (base + pet fee) are calculated automatically for the letter.</div>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="section">
+    <div class="head"><span class="tag">→ row</span><h2>Generate the Renewal Letter</h2></div>
+    <div class="body">
+      <div class="actions">
+        <button id="buildRenewalBtn" type="button">📄 Build & Generate Renewal Letter</button>
+        <button id="resetRenewalBtn" type="button" class="ghost" style="display:none;">🔄 Start Another Renewal</button>
+        <button class="secondary" id="copyRenewalBtn" type="button" disabled>Copy row to clipboard</button>
+      </div>
+      <div class="status" id="renewalBuildStatus"></div>
+      <div style="overflow-x:auto; margin-top:14px;">
+        <table class="output-table" id="renewalOutputTable" style="display:none;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody id="renewalOutputBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -1337,10 +1402,265 @@ document.addEventListener('input', () => {
   window._draftSaveTimer = setTimeout(saveDraft, 600);
 });
 
+// ---------- Renewal Mode ----------
+
+const RENEWAL_COLUMNS = ["LEASE_ID","TODAY_DATE","TENANT_1_NAME","PROPERTY_ADDRESS","CURRENT_LEASE_END_DATE",
+  "NEW_RENT_12MO","PET_FEE","TOTAL_RENT_12MO","NEW_RENT_MTM","TOTAL_RENT_MTM","TENANT_SIGNATURE_BLOCKS"];
+
+const LEASE_SHEET_ID = "1h2X9milKkyyeo3hu84MWZBKvsDXZ3DwO2W2N_aQxXrw";
+const LEASE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${LEASE_SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
+
+let activeLeases = [];
+let lastRenewalRow = null;
+
+function parseCSVText(text) {
+  const lines = text.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim().length > 0);
+  const parseLine = (line) => {
+    const arr = [];
+    let quote = false, col = '';
+    for (let c of line) {
+      if (c === '"') { quote = !quote; }
+      else if (c === ',' && !quote) { arr.push(col.replace(/^"|"$/g, '').trim()); col = ''; }
+      else { col += c; }
+    }
+    arr.push(col.replace(/^"|"$/g, '').trim());
+    return arr;
+  };
+  return lines.map(parseLine);
+}
+
+async function fetchActiveLeases() {
+  const fetchUrl = (url) => fetch(url).then(res => {
+    if (!res.ok) throw new Error("Network response error");
+    return res.text();
+  });
+
+  let text = "";
+  try {
+    text = await fetchUrl(LEASE_SHEET_CSV_URL);
+  } catch (err) {
+    try {
+      text = await fetchUrl(CORS_PROXY + encodeURIComponent(LEASE_SHEET_CSV_URL));
+    } catch (proxyErr) {
+      activeLeases = [];
+      return false;
+    }
+  }
+
+  try {
+    const rows = parseCSVText(text);
+    if (rows.length < 2) { activeLeases = []; return false; }
+    const headers = rows[0].map(h => h.toUpperCase().trim());
+    const idx = {
+      leaseId: headers.indexOf('LEASE_ID'),
+      address: headers.indexOf('PROPERTY_ADDRESS'),
+      tenant: headers.indexOf('TENANT_1_NAME'),
+      endDate: headers.indexOf('LEASE_END_DATE'),
+      adults: headers.indexOf('ADULT_TENANTS_LIST')
+    };
+    activeLeases = rows.slice(1)
+      .filter(r => idx.leaseId !== -1 && r[idx.leaseId])
+      .map(r => ({
+        leaseId: r[idx.leaseId],
+        address: idx.address !== -1 ? r[idx.address] : '',
+        tenant: idx.tenant !== -1 ? r[idx.tenant] : '',
+        endDate: idx.endDate !== -1 ? r[idx.endDate] : '',
+        adultsList: idx.adults !== -1 ? r[idx.adults] : ''
+      }));
+    return true;
+  } catch (err) {
+    activeLeases = [];
+    return false;
+  }
+}
+
+function adultsListToSignatureBlocks(adultsListText) {
+  if (!adultsListText) return '';
+  // Each line looks like: "Name (DOB: mm/dd/yyyy, SSN: xxx-xx-xxxx)" — keep just the name.
+  const names = adultsListText.split('\n').map(line => {
+    const m = line.match(/^(.*?)\s*\(/);
+    return (m ? m[1] : line).trim();
+  }).filter(n => n);
+  return names.map((name, i) => `${i + 1}. Name: ${name} — Signature: _________________________ Date: _______`).join('\n\n\n');
+}
+
+async function populateRenewalPicker() {
+  const picker = el('renewalPicker');
+  const statusEl = el('renewalPickStatus');
+  picker.innerHTML = '<option value="">— Loading active leases... —</option>';
+  const ok = await fetchActiveLeases();
+  picker.innerHTML = '<option value="">— Select a lease —</option>';
+  activeLeases.forEach((lse, idx) => {
+    const opt = document.createElement('option');
+    opt.value = String(idx);
+    opt.textContent = `${lse.leaseId} — ${lse.address} (${lse.tenant})`;
+    picker.appendChild(opt);
+  });
+  statusEl.textContent = ok
+    ? `Synced (${activeLeases.length} active lease(s) loaded).`
+    : 'Could not load leases from the Sheet — try Sync Sheet again.';
+  statusEl.className = ok ? 'status' : 'status err';
+}
+
+el('renewalReloadBtn').addEventListener('click', populateRenewalPicker);
+
+el('renewalPicker').addEventListener('change', () => {
+  const idx = el('renewalPicker').value;
+  if (idx === '') {
+    el('ren_leaseId').value = ''; el('ren_property').value = '';
+    el('ren_tenant').value = ''; el('ren_currentEnd').value = '';
+    return;
+  }
+  const lse = activeLeases[parseInt(idx, 10)];
+  if (!lse) return;
+  el('ren_leaseId').value = lse.leaseId;
+  el('ren_property').value = lse.address;
+  el('ren_tenant').value = lse.tenant;
+  el('ren_currentEnd').value = lse.endDate;
+});
+
+function buildRenewalRow() {
+  const idx = el('renewalPicker').value;
+  const lse = idx !== '' ? activeLeases[parseInt(idx, 10)] : null;
+  const petFee = parseFloat(el('ren_petfee').value) || 0;
+  const rent12 = parseFloat(el('ren_rent12').value) || 0;
+  const rentMtm = parseFloat(el('ren_rentmtm').value) || 0;
+
+  const values = {
+    LEASE_ID: lse ? lse.leaseId : '',
+    TODAY_DATE: fmtDate(el('ren_today').value || todayISO()),
+    TENANT_1_NAME: lse ? lse.tenant : '',
+    PROPERTY_ADDRESS: lse ? lse.address : '',
+    CURRENT_LEASE_END_DATE: lse ? lse.endDate : '',
+    NEW_RENT_12MO: fmtMoney(rent12.toFixed(2)),
+    PET_FEE: fmtMoney(petFee.toFixed(2)),
+    TOTAL_RENT_12MO: fmtMoney((rent12 + petFee).toFixed(2)),
+    NEW_RENT_MTM: fmtMoney(rentMtm.toFixed(2)),
+    TOTAL_RENT_MTM: fmtMoney((rentMtm + petFee).toFixed(2)),
+    TENANT_SIGNATURE_BLOCKS: lse ? adultsListToSignatureBlocks(lse.adultsList) : ''
+  };
+
+  return RENEWAL_COLUMNS.map(c => values[c] !== undefined ? values[c] : '');
+}
+
+function validateRenewalBeforeBuild() {
+  const problems = [];
+  if (!el('renewalPicker').value) problems.push('Select a lease to renew.');
+  if (!el('ren_rent12').value && !el('ren_rentmtm').value) problems.push('Enter at least one new rent amount (12-Month or Month-to-Month).');
+  return problems;
+}
+
+let isSubmittingRenewal = false;
+let alreadySubmittedRenewal = false;
+
+el('buildRenewalBtn').addEventListener('click', async () => {
+  if (isSubmittingRenewal) return;
+
+  if (alreadySubmittedRenewal) {
+    const proceed = confirm('You already generated a renewal letter this session. Generate ANOTHER one with the same data? This could duplicate the entry in the Renewals sheet.');
+    if (!proceed) return;
+  }
+
+  const problems = validateRenewalBeforeBuild();
+  if (problems.length) {
+    const statusEl = el('renewalBuildStatus');
+    statusEl.innerHTML = '⚠️ ' + problems.join(' ');
+    statusEl.className = 'status err';
+    return;
+  }
+
+  if (!confirm(`Generate the renewal letter for ${el('ren_tenant').value} at ${el('ren_property').value}?`)) return;
+
+  isSubmittingRenewal = true;
+  const buildBtn = el('buildRenewalBtn');
+  buildBtn.disabled = true;
+  const originalLabel = buildBtn.textContent;
+  buildBtn.textContent = '⏳ Generating...';
+
+  lastRenewalRow = buildRenewalRow();
+  const tbody = el('renewalOutputBody');
+  tbody.innerHTML = '';
+  RENEWAL_COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(lastRenewalRow[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('renewalOutputTable').style.display = 'table';
+  el('copyRenewalBtn').disabled = false;
+
+  const statusEl = el('renewalBuildStatus');
+  statusEl.textContent = '⏳ Sending data & compiling the renewal letter PDF... (takes a few seconds)';
+  statusEl.className = 'status';
+
+  let succeeded = false;
+  if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
+    try {
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'renewal', row: lastRenewalRow })
+      });
+      statusEl.textContent = '✅ Sent. Check the Lease Renewals Drive folder in a minute — the letter PDF will appear there.';
+      statusEl.className = 'status';
+      succeeded = true;
+    } catch (err) {
+      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.className = 'status err';
+    }
+  }
+
+  isSubmittingRenewal = false;
+
+  if (succeeded) {
+    alreadySubmittedRenewal = true;
+    buildBtn.textContent = '✅ Renewal Generado';
+    buildBtn.disabled = true;
+    el('resetRenewalBtn').style.display = 'inline-block';
+  } else {
+    buildBtn.textContent = originalLabel;
+    buildBtn.disabled = false;
+  }
+});
+
+el('resetRenewalBtn').addEventListener('click', () => {
+  if (confirm('Start a new renewal? Current selections will be cleared.')) location.reload();
+});
+
+el('copyRenewalBtn').addEventListener('click', async () => {
+  if (!lastRenewalRow) return;
+  const tsv = lastRenewalRow.join('\t');
+  try {
+    await navigator.clipboard.writeText(tsv);
+    el('renewalBuildStatus').textContent = 'Copied! Paste into the next empty row of the Renewals tab, column A.';
+    el('renewalBuildStatus').className = 'status';
+  } catch (err) {
+    el('renewalBuildStatus').textContent = 'Could not copy automatically — select the table text manually and copy.';
+    el('renewalBuildStatus').className = 'status err';
+  }
+});
+
+// ---------- Mode toggle ----------
+
+function setMode(mode) {
+  const isNew = mode === 'new';
+  el('leaseMain').style.display = isNew ? '' : 'none';
+  el('renewalMain').style.display = isNew ? 'none' : '';
+  el('ledgerStrip').style.display = isNew ? '' : 'none';
+  el('modeNewBtn').classList.toggle('active', isNew);
+  el('modeRenewalBtn').classList.toggle('active', !isNew);
+  if (!isNew && activeLeases.length === 0) populateRenewalPicker();
+}
+
+el('modeNewBtn').addEventListener('click', () => setMode('new'));
+el('modeRenewalBtn').addEventListener('click', () => setMode('renewal'));
+
 // ---------- Init ----------
 
 async function init() {
   el('l_today').value = todayISO();
+  el('ren_today').value = todayISO();
+  setMode('new');
   el('p_maint').value = DEFAULT_MAINT;
   el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
   el('p_trash').value = 'Tenant'; el('p_snow').value = 'Tenant'; el('p_lawn').value = 'Tenant';
