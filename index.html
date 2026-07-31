@@ -210,6 +210,24 @@
 
 <main id="leaseMain">
 
+  <!-- LOAD EXISTING LEASE -->
+  <div class="section">
+    <div class="head"><span class="tag">🔍</span><h2>Load an Existing Lease (optional — to edit/renew/add a pet, etc.)</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Search by Lease ID, address, or tenant name</label>
+        <input id="loadLeaseSearch" placeholder="e.g. LEASE-0004, McAllister, Ashleigh...">
+      </div>
+      <div class="prop-select-row">
+        <select id="loadLeasePicker"><option value="">— Type to search, or click Sync Sheet —</option></select>
+        <button id="loadLeaseSyncBtn" type="button" class="secondary">Sync Sheet</button>
+        <button id="loadLeaseBtn" type="button" class="ghost">Load into Form Below</button>
+      </div>
+      <span class="status" id="loadLeaseStatus"></span>
+      <p class="hint" style="margin-top:8px;">Loading a lease pre-fills every field below so you can fix a typo, add a pet, or make any change — it does NOT overwrite the original. Submitting still creates a brand-new dated row with its own Lease ID, so your history stays intact.</p>
+    </div>
+  </div>
+
   <!-- PROPERTY -->
   <div class="section">
     <div class="head"><span class="tag">A · fixed</span><h2>Property</h2></div>
@@ -419,6 +437,10 @@
   <div class="section">
     <div class="head"><span class="tag">1</span><h2>Select Lease to Renew</h2></div>
     <div class="body">
+      <div class="field">
+        <label>Search by Lease ID, address, or tenant name</label>
+        <input id="renewalSearch" placeholder="e.g. LEASE-0004, McAllister, Ashleigh...">
+      </div>
       <div class="prop-select-row">
         <select id="renewalPicker"><option value="">— Loading active leases... —</option></select>
         <button id="renewalReloadBtn" type="button" class="secondary">Sync Sheet</button>
@@ -1486,6 +1508,8 @@ function parseCSVText(text) {
   return rows.filter(r => r.some(cell => cell.length > 0));
 }
 
+let leaseHeaders = [];
+
 async function fetchActiveLeases() {
   const fetchUrl = (url) => fetch(url).then(res => {
     if (!res.ok) throw new Error("Network response error");
@@ -1508,6 +1532,7 @@ async function fetchActiveLeases() {
     const rows = parseCSVText(text);
     if (rows.length < 2) { activeLeases = []; return false; }
     const headers = rows[0].map(h => h.toUpperCase().trim());
+    leaseHeaders = headers;
     const idx = {
       leaseId: headers.indexOf('LEASE_ID'),
       address: headers.indexOf('PROPERTY_ADDRESS'),
@@ -1522,13 +1547,19 @@ async function fetchActiveLeases() {
         address: idx.address !== -1 ? r[idx.address] : '',
         tenant: idx.tenant !== -1 ? r[idx.tenant] : '',
         endDate: idx.endDate !== -1 ? r[idx.endDate] : '',
-        adultsList: idx.adults !== -1 ? r[idx.adults] : ''
+        adultsList: idx.adults !== -1 ? r[idx.adults] : '',
+        raw: r
       }));
     return true;
   } catch (err) {
     activeLeases = [];
     return false;
   }
+}
+
+function leaseField(lse, columnName) {
+  const i = leaseHeaders.indexOf(columnName);
+  return (i !== -1 && lse.raw) ? (lse.raw[i] || '') : '';
 }
 
 function adultsListToSignatureBlocks(adultsListText) {
@@ -1541,23 +1572,40 @@ function adultsListToSignatureBlocks(adultsListText) {
   return names.map((name, i) => `${i + 1}. Name: ${name} — Signature: _________________________ Date: _______`).join('\n\n\n');
 }
 
+function renderPickerOptions(picker, filterText) {
+  const term = (filterText || '').trim().toLowerCase();
+  const matches = term
+    ? activeLeases.filter(lse =>
+        lse.leaseId.toLowerCase().includes(term) ||
+        (lse.address || '').toLowerCase().includes(term) ||
+        (lse.tenant || '').toLowerCase().includes(term))
+    : activeLeases;
+
+  picker.innerHTML = matches.length
+    ? '<option value="">— Select a lease —</option>'
+    : '<option value="">— No matches —</option>';
+  matches.forEach(lse => {
+    const realIdx = activeLeases.indexOf(lse);
+    const opt = document.createElement('option');
+    opt.value = String(realIdx);
+    opt.textContent = `${lse.leaseId} — ${lse.address} (${lse.tenant})`;
+    picker.appendChild(opt);
+  });
+}
+
 async function populateRenewalPicker() {
   const picker = el('renewalPicker');
   const statusEl = el('renewalPickStatus');
   picker.innerHTML = '<option value="">— Loading active leases... —</option>';
   const ok = await fetchActiveLeases();
-  picker.innerHTML = '<option value="">— Select a lease —</option>';
-  activeLeases.forEach((lse, idx) => {
-    const opt = document.createElement('option');
-    opt.value = String(idx);
-    opt.textContent = `${lse.leaseId} — ${lse.address} (${lse.tenant})`;
-    picker.appendChild(opt);
-  });
+  renderPickerOptions(picker, el('renewalSearch').value);
   statusEl.textContent = ok
-    ? `Synced (${activeLeases.length} active lease(s) loaded).`
+    ? `Synced (${activeLeases.length} active lease(s) loaded). Type above to search by Lease ID, address, or tenant.`
     : 'Could not load leases from the Sheet — try Sync Sheet again.';
   statusEl.className = ok ? 'status' : 'status err';
 }
+
+el('renewalSearch').addEventListener('input', () => renderPickerOptions(el('renewalPicker'), el('renewalSearch').value));
 
 el('renewalReloadBtn').addEventListener('click', populateRenewalPicker);
 
@@ -1574,6 +1622,172 @@ el('renewalPicker').addEventListener('change', () => {
   el('ren_property').value = lse.address;
   el('ren_tenant').value = lse.tenant;
   el('ren_currentEnd').value = lse.endDate;
+});
+
+// ---------- Load Existing Lease into New Lease form (search, edit, add pet, etc.) ----------
+
+async function populateLoadLeasePicker() {
+  const picker = el('loadLeasePicker');
+  const statusEl = el('loadLeaseStatus');
+  picker.innerHTML = '<option value="">— Loading active leases... —</option>';
+  const ok = await fetchActiveLeases();
+  renderPickerOptions(picker, el('loadLeaseSearch').value);
+  statusEl.textContent = ok
+    ? `Synced (${activeLeases.length} lease(s) loaded). Type above to search by Lease ID, address, or tenant.`
+    : 'Could not load leases from the Sheet — try Sync Sheet again.';
+  statusEl.className = ok ? 'status' : 'status err';
+}
+
+el('loadLeaseSearch').addEventListener('input', () => renderPickerOptions(el('loadLeasePicker'), el('loadLeaseSearch').value));
+el('loadLeaseSyncBtn').addEventListener('click', populateLoadLeasePicker);
+
+function toInputDate(mdy) {
+  // Converts "07/31/2026" -> "2026-07-31". Returns '' for blank/N/A/non-date text.
+  if (!mdy) return '';
+  const m = String(mdy).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+}
+
+function parseAdultsListToArray(text) {
+  if (!text) return [];
+  return text.split('\n').map(line => {
+    const cleaned = line.replace(/^\d+\.\s*/, '').trim();
+    const m = cleaned.match(/^(.*?)\s*\(DOB:\s*([^,]*),\s*SSN:\s*([^)]*)\)/);
+    if (!m) return cleaned ? { id: uid(), name: cleaned, dob: '', ssn: '' } : null;
+    return { id: uid(), name: m[1].trim(), dob: toInputDate(m[2].trim()), ssn: m[3].trim() };
+  }).filter(Boolean);
+}
+
+function parseMinorsListToArray(text) {
+  if (!text || text.trim() === 'None') return [];
+  return text.split('\n').map(line => {
+    const cleaned = line.replace(/^\d+\.\s*/, '').trim();
+    const m = cleaned.match(/^(.*?)\s*\(DOB:\s*([^)]*)\)/);
+    if (!m) return cleaned ? { id: uid(), name: cleaned, dob: '' } : null;
+    return { id: uid(), name: m[1].trim(), dob: toInputDate(m[2].trim()) };
+  }).filter(Boolean);
+}
+
+function parsePetDetailsBlockToArray(text) {
+  if (!text || text.trim() === '' || text.trim() === 'N/A') return [];
+  return text.split('\n').map(line => {
+    const m = line.match(/^Pet #\d+:\s*([^|]*)\|\s*Breed:\s*([^|]*)\|\s*Name:\s*([^|]*)\|\s*Weight:\s*([^|]*)\|\s*Color:\s*(.*)$/);
+    if (!m) return null;
+    return {
+      id: uid(),
+      type: m[1].trim(), breed: m[2].trim(), name: m[3].trim(), weight: m[4].trim(), color: m[5].trim()
+    };
+  }).filter(Boolean);
+}
+
+function loadLeaseIntoNewLeaseForm(lse) {
+  const f = (col) => leaseField(lse, col);
+
+  el('p_address').value = f('PROPERTY_ADDRESS');
+  el('p_floor').value = f('UNIT_FLOOR_LOCATION');
+  el('p_beds').value = f('NUMBER_OF_BEDROOMS');
+  el('p_baths').value = f('NUMBER_OF_BATHROOMS');
+  el('p_appliances').value = f('INCLUDED_APPLIANCES');
+  el('p_amenities').value = f('INCLUDED_AMENITIES');
+
+  el('p_elec').value = f('ELECTRICITY_RESPONSIBILITY') || 'Tenant';
+  el('p_gas').value = f('GAS_RESPONSIBILITY') || 'Tenant';
+  el('p_water').value = f('WATER_SEWER_RESPONSIBILITY') || 'Tenant';
+  el('p_trash').value = f('TRASH_RESPONSIBILITY') || 'Tenant';
+  const snowRaw = f('SNOW_RESPONSIBILITY');
+  const snowMatch = snowRaw.match(/^(.*?)\s*\((.*)\)$/);
+  el('p_snow').value = (snowMatch ? snowMatch[1] : snowRaw) || 'Tenant';
+  el('p_snownote').value = snowMatch ? snowMatch[2] : '';
+  el('p_lawn').value = f('LAWN_RESPONSIBILITY') || 'Tenant';
+  el('p_maint').value = f('TENANT_MAINTENANCE_RESPONSIBILITIES') || DEFAULT_MAINT;
+
+  const leaseType = f('LEASE_TYPE');
+  const termText = f('LEASE_TERM_DURATION');
+  el('l_start').value = toInputDate(f('LEASE_START_DATE'));
+  if (leaseType === 'Month-to-Month' || !termText) {
+    el('l_term').value = 'Month-to-Month';
+  } else if (['1 Year', '2 Years', '6 Months'].includes(termText)) {
+    el('l_term').value = termText;
+  } else {
+    el('l_term').value = 'Custom';
+    el('l_termCustom').value = termText;
+  }
+  el('l_term').dispatchEvent(new Event('change'));
+  el('l_end').value = toInputDate(f('LEASE_END_DATE'));
+
+  el('t_email').value = f('CONTACT_EMAIL');
+  el('t_phone').value = f('CONTACT_PHONE');
+  el('t_occupancyOverride').value = f('MAX_OCCUPANCY_LIMIT');
+
+  adults.length = 0;
+  adults.push(...parseAdultsListToArray(f('ADULT_TENANTS_LIST')));
+  if (!adults.length) adults.push({ id: uid(), name: '', dob: '', ssn: '' });
+
+  minors.length = 0;
+  minors.push(...parseMinorsListToArray(f('AUTHORIZED_MINORS_LIST')));
+
+  const petYN = f('HAS_PET_YN') || 'No';
+  el('pet_yn').value = petYN;
+  pets.length = 0;
+  pets.push(...parsePetDetailsBlockToArray(f('PET_DETAILS_BLOCK')));
+  updateAddPetAvailability();
+
+  const baseRent = parseMoney(f('MONTHLY_BASE_RENT'));
+  el('r_base').value = baseRent || '';
+  const petRentRaw = f('MONTHLY_PET_RENT');
+  el('r_petrent').value = (petYN === 'No' || petRentRaw === 'N/A') ? (petYN === 'No' ? 'N/A' : '') : petRentRaw.replace(/^\$/, '');
+  el('r_deposit').value = parseMoney(f('SECURITY_DEPOSIT_AMOUNT')) || '';
+
+  const prorationStart = f('PRORATION_START_DATE');
+  if (prorationStart && prorationStart !== 'N/A') {
+    el('r_prorateToggle').checked = true;
+    el('r_prorateStart').value = toInputDate(prorationStart);
+    el('r_prorateEnd').value = toInputDate(f('PRORATION_END_DATE'));
+    el('prorateFields').style.display = '';
+  } else {
+    el('r_prorateToggle').checked = false;
+    el('prorateFields').style.display = 'none';
+  }
+
+  el('r_firstfull').value = parseMoney(f('FIRST_FULL_MONTH_RENT')) || '';
+  el('r_buyout').value = parseMoney(f('EARLY_BUYOUT_FEE_AMOUNT')) || '';
+
+  const garbageFee = f('GARBAGE_SERVICE_FEE');
+  const garbageWindow = f('GARBAGE_START_DATE');
+  if (garbageFee && garbageFee !== 'N/A') {
+    el('garbage_yn').value = 'Yes';
+    el('garbageStartWrap').style.display = '';
+    el('r_garbagewindow').value = garbageWindow;
+    el('r_garbagefee').value = garbageFee.replace(/^\$/, '');
+  } else {
+    el('garbage_yn').value = 'No';
+    el('garbageStartWrap').style.display = 'none';
+    el('r_garbagewindow').value = 'N/A';
+    el('r_garbagefee').value = 'N/A';
+  }
+  el('r_petfee').value = (petYN === 'No') ? 'N/A' : f('NON_REFUNDABLE_PET_FEE').replace(/^\$/, '');
+
+  renderAdults(); renderMinors(); renderPets(); updateLedger();
+
+  const statusEl = el('loadLeaseStatus');
+  statusEl.textContent = `✅ Loaded ${lse.leaseId} into the form below. Make your changes, then Review & Generate — this will create a brand-new lease entry, the original stays untouched.`;
+  statusEl.className = 'status';
+
+  el('leaseMain').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+el('loadLeaseBtn').addEventListener('click', () => {
+  const idx = el('loadLeasePicker').value;
+  if (idx === '') {
+    el('loadLeaseStatus').textContent = 'Select a lease from the list first.';
+    el('loadLeaseStatus').className = 'status err';
+    return;
+  }
+  const lse = activeLeases[parseInt(idx, 10)];
+  if (!lse) return;
+  if (!confirm(`Load ${lse.leaseId} (${lse.address}) into the form below? Any unsaved changes in the form will be overwritten.`)) return;
+  loadLeaseIntoNewLeaseForm(lse);
 });
 
 function buildRenewalRow() {
