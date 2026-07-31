@@ -414,7 +414,7 @@
         <button id="confirmSendBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate PDF</button>
         <button id="backToEditBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
         <button id="resetBuildBtn" type="button" class="ghost" style="display:none;">🔄 Start a New Lease</button>
-        <a id="openDriveFolderBtn" href="https://drive.google.com/drive/folders/1Z4ueO6q38DPAbPRP4lG9ip_KPWXIxVDa" target="_blank"><button class="success" type="button">📁 Open Google Drive Folder</button></a>
+        <a id="openDriveFolderBtn" href="https://drive.google.com/drive/folders/1Ygq3PuteCUQzGpDinwIUoA2WrD5IFEF4" target="_blank"><button class="success" type="button">📁 Open Google Drive Folder</button></a>
         <button class="secondary" id="copyBtn" type="button" disabled>Copy row to clipboard</button>
         <button class="secondary" id="downloadBtn" type="button" disabled>Download as CSV</button>
       </div>
@@ -496,7 +496,7 @@
 
 <script>
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxsxM6zVczJdVunBrPat3zICL87mVHHO7vsS73nA3eS-nAqGXXfkOhVE0k5ojERZ35K/exec";
-const DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Z4ueO6q38DPAbPRP4lG9ip_KPWXIxVDa";
+const DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Ygq3PuteCUQzGpDinwIUoA2WrD5IFEF4";
 
 const GOOGLE_SHEET_PROPERTIES_ID = "1Co_rzpZzUDLeTyH7FHIiu0Lpv5I_cESN9ejUDW1BL0s";
 const GOOGLE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_PROPERTIES_ID}/gviz/tq?tqx=out:csv`;
@@ -1509,6 +1509,18 @@ function parseCSVText(text) {
 }
 
 let leaseHeaders = [];
+let lastExpiredHiddenCount = 0;
+const EXPIRED_GRACE_MONTHS = 6;
+
+function isLeaseExpired(endDateStr) {
+  if (!endDateStr) return false; // blank / Month-to-Month — never hide
+  const m = String(endDateStr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return false; // unparseable — safer to keep it visible
+  const endDate = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10));
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - EXPIRED_GRACE_MONTHS);
+  return endDate < cutoff;
+}
 
 async function fetchActiveLeases() {
   const fetchUrl = (url) => fetch(url).then(res => {
@@ -1540,7 +1552,7 @@ async function fetchActiveLeases() {
       endDate: headers.indexOf('LEASE_END_DATE'),
       adults: headers.indexOf('ADULT_TENANTS_LIST')
     };
-    activeLeases = rows.slice(1)
+    const allLeases = rows.slice(1)
       .filter(r => idx.leaseId !== -1 && r[idx.leaseId])
       .map(r => ({
         leaseId: r[idx.leaseId],
@@ -1550,6 +1562,8 @@ async function fetchActiveLeases() {
         adultsList: idx.adults !== -1 ? r[idx.adults] : '',
         raw: r
       }));
+    activeLeases = allLeases.filter(lse => !isLeaseExpired(lse.endDate));
+    lastExpiredHiddenCount = allLeases.length - activeLeases.length;
     return true;
   } catch (err) {
     activeLeases = [];
@@ -1600,7 +1614,7 @@ async function populateRenewalPicker() {
   const ok = await fetchActiveLeases();
   renderPickerOptions(picker, el('renewalSearch').value);
   statusEl.textContent = ok
-    ? `Synced (${activeLeases.length} active lease(s) loaded). Type above to search by Lease ID, address, or tenant.`
+    ? `Synced (${activeLeases.length} active lease(s) loaded${lastExpiredHiddenCount ? `, ${lastExpiredHiddenCount} expired lease(s) hidden` : ''}). Type above to search by Lease ID, address, or tenant.`
     : 'Could not load leases from the Sheet — try Sync Sheet again.';
   statusEl.className = ok ? 'status' : 'status err';
 }
@@ -1633,7 +1647,7 @@ async function populateLoadLeasePicker() {
   const ok = await fetchActiveLeases();
   renderPickerOptions(picker, el('loadLeaseSearch').value);
   statusEl.textContent = ok
-    ? `Synced (${activeLeases.length} lease(s) loaded). Type above to search by Lease ID, address, or tenant.`
+    ? `Synced (${activeLeases.length} lease(s) loaded${lastExpiredHiddenCount ? `, ${lastExpiredHiddenCount} expired lease(s) hidden` : ''}). Type above to search by Lease ID, address, or tenant.`
     : 'Could not load leases from the Sheet — try Sync Sheet again.';
   statusEl.className = ok ? 'status' : 'status err';
 }
