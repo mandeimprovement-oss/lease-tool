@@ -205,6 +205,7 @@
   <button type="button" id="modeNewBtn" class="mode-btn">📝 New Lease</button>
   <button type="button" id="modeRenewalBtn" class="mode-btn">🔄 Renewal</button>
   <button type="button" id="modePetAddBtn" class="mode-btn">🐾 Pet Addendum</button>
+  <button type="button" id="modeNonRenewBtn" class="mode-btn">🚫 Non-Renewal</button>
 </div>
 
 <div class="ledger" id="ledgerStrip"></div>
@@ -566,6 +567,67 @@
         </table>
       </div>
       <p class="hint" style="margin-top:10px;">This generates the PDF and also updates the pet fields on the matching lease's row in Sheet1 (HAS_PET_YN, pet details, pet rent/fee, and total monthly rent).</p>
+    </div>
+  </div>
+
+</main>
+
+<main id="nonRenewMain" style="display:none;">
+
+  <!-- SELECT LEASE -->
+  <div class="section">
+    <div class="head"><span class="tag">1</span><h2>Select the Lease Not Being Renewed</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Search by Lease ID, address, or tenant name</label>
+        <input id="nrSearch" placeholder="e.g. LEASE-0004, McAllister, Ashleigh...">
+      </div>
+      <div class="prop-select-row">
+        <select id="nrPicker"><option value="">— Loading active leases... —</option></select>
+        <button id="nrReloadBtn" type="button" class="secondary">Sync Sheet</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Property Address</label><input id="nr_property" readonly></div>
+        <div class="field"><label>Tenant</label><input id="nr_tenant" readonly></div>
+        <div class="field"><label>Lease Type</label><input id="nr_leaseType" readonly></div>
+      </div>
+      <span class="status" id="nrPickStatus"></span>
+    </div>
+  </div>
+
+  <!-- NOTICE DETAILS -->
+  <div class="section">
+    <div class="head"><span class="tag">2</span><h2>Notice Details</h2></div>
+    <div class="body">
+      <div class="field"><label>Notice Date (today)</label><input id="nr_today" type="date"></div>
+      <div class="field">
+        <label>Termination Date <span class="hint" id="nr_termDateHint">(fixed-term lease — this is the contractual lease end date, not editable)</span></label>
+        <input id="nr_termDate" type="date">
+      </div>
+      <div class="field"><label>Notice Period Text <span class="hint">(auto-calculated from notice date to termination date)</span></label><input id="nr_noticePeriod" readonly></div>
+      <div class="hint" id="nr_noticeWarning" style="display:none;color:var(--rust);margin-top:6px;"></div>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="section">
+    <div class="head"><span class="tag">→ row</span><h2>Generate the Non-Renewal Notice</h2></div>
+    <div class="body">
+      <div class="actions">
+        <button id="buildNonRenewBtn" type="button">📄 Review Before Generating</button>
+        <button id="confirmNonRenewBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate PDF</button>
+        <button id="backToEditNonRenewBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
+        <button id="resetNonRenewBtn" type="button" class="ghost" style="display:none;">🔄 Start Another Notice</button>
+        <button class="secondary" id="copyNonRenewBtn" type="button" disabled>Copy row to clipboard</button>
+      </div>
+      <div class="status" id="nrBuildStatus"></div>
+      <div style="overflow-x:auto; margin-top:14px;">
+        <table class="output-table" id="nrOutputTable" style="display:none;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody id="nrOutputBody"></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px;">This generates a standalone PDF only — nothing is written to any Google Sheet.</p>
     </div>
   </div>
 
@@ -2042,17 +2104,21 @@ function setMode(mode) {
   el('leaseMain').style.display = mode === 'new' ? '' : 'none';
   el('renewalMain').style.display = mode === 'renewal' ? '' : 'none';
   el('petAddMain').style.display = mode === 'petadd' ? '' : 'none';
+  el('nonRenewMain').style.display = mode === 'nonrenew' ? '' : 'none';
   el('ledgerStrip').style.display = mode === 'new' ? '' : 'none';
   el('modeNewBtn').classList.toggle('active', mode === 'new');
   el('modeRenewalBtn').classList.toggle('active', mode === 'renewal');
   el('modePetAddBtn').classList.toggle('active', mode === 'petadd');
+  el('modeNonRenewBtn').classList.toggle('active', mode === 'nonrenew');
   if (mode === 'renewal' && activeLeases.length === 0) populateRenewalPicker();
   if (mode === 'petadd' && activeLeases.length === 0) populatePetAddPicker();
+  if (mode === 'nonrenew' && activeLeases.length === 0) populateNonRenewPicker();
 }
 
 el('modeNewBtn').addEventListener('click', () => setMode('new'));
 el('modeRenewalBtn').addEventListener('click', () => setMode('renewal'));
 el('modePetAddBtn').addEventListener('click', () => setMode('petadd'));
+el('modeNonRenewBtn').addEventListener('click', () => setMode('nonrenew'));
 
 // ---------- Pet Addendum Mode ----------
 
@@ -2060,7 +2126,6 @@ const PET_ADD_COLUMNS = ["TODAY_DATE", "LEASE_START_DATE", "TENANT_1_NAME", "PRO
   "HAS_PET_YN", "PET_DETAILS_BLOCK", "NON_REFUNDABLE_PET_FEE", "MONTHLY_PET_RENT", "TENANT_SIGNATURE_BLOCKS"];
 
 let paPets = [];
-let selectedPaLeaseIdx = '';
 let lastPetAddRow = null;
 
 async function populatePetAddPicker() {
@@ -2079,12 +2144,12 @@ el('petAddSearch').addEventListener('input', () => renderPickerOptions(el('petAd
 el('petAddReloadBtn').addEventListener('click', populatePetAddPicker);
 
 el('petAddPicker').addEventListener('change', () => {
-  selectedPaLeaseIdx = el('petAddPicker').value;
-  if (selectedPaLeaseIdx === '') {
+  const idx = el('petAddPicker').value;
+  if (idx === '') {
     el('pa_property').value = ''; el('pa_tenant').value = ''; el('pa_leaseStart').value = '';
     return;
   }
-  const lse = activeLeases[parseInt(selectedPaLeaseIdx, 10)];
+  const lse = activeLeases[parseInt(idx, 10)];
   if (!lse) return;
   el('pa_property').value = lse.address;
   el('pa_tenant').value = lse.tenant;
@@ -2141,8 +2206,13 @@ el('paEstimateFeesBtn').addEventListener('click', () => {
   el('petAddBuildStatus').className = 'status';
 });
 
+function getSelectedPaLease() {
+  const idx = el('petAddPicker').value;
+  return idx !== '' ? activeLeases[parseInt(idx, 10)] : null;
+}
+
 function buildPetAddRow() {
-  const lse = selectedPaLeaseIdx !== '' ? activeLeases[parseInt(selectedPaLeaseIdx, 10)] : null;
+  const lse = getSelectedPaLease();
   const petDetailsBlock = paPets.filter(p => p.name || p.type).map((p, i) =>
     `Pet #${i + 1}: ${p.type || ''} | Breed: ${p.breed || 'N/A'} | Name: ${p.name || ''} | Weight: ${p.weight || ''} | Color: ${p.color || ''}`
   ).join('\n');
@@ -2163,7 +2233,7 @@ function buildPetAddRow() {
 
 function validatePetAddBeforeBuild() {
   const problems = [];
-  if (selectedPaLeaseIdx === '') problems.push('Select the lease this pet belongs to.');
+  if (el('petAddPicker').value === '') problems.push('Select the lease this pet belongs to.');
   if (!paPets.some(p => p.type)) problems.push('Add at least one pet with a Type.');
   if (!el('pa_petrent').value && !el('pa_petfee').value) problems.push('Enter (or auto-calc) the pet fees.');
   return problems;
@@ -2244,7 +2314,7 @@ el('confirmPetAddBtn').addEventListener('click', async () => {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ mode: 'pet_addendum', leaseId: (activeLeases[parseInt(selectedPaLeaseIdx, 10)] || {}).leaseId || '', row: lastPetAddRow })
+        body: JSON.stringify({ mode: 'pet_addendum', leaseId: (getSelectedPaLease() || {}).leaseId || '', row: lastPetAddRow })
       });
       statusEl.textContent = '✅ Sent. Check the New Lease Agreements Drive folder in a minute — the addendum PDF will appear there.';
       statusEl.className = 'status';
@@ -2284,12 +2354,236 @@ el('copyPetAddBtn').addEventListener('click', async () => {
   }
 });
 
+// ---------- Non-Renewal Mode ----------
+
+const NON_RENEWAL_COLUMNS = ["TODAY_DATE", "TENANT_1_NAME", "PROPERTY_ADDRESS", "TERMINATION_DATE", "NOTICE_PERIOD_TEXT"];
+
+let lastNonRenewRow = null;
+
+async function populateNonRenewPicker() {
+  const picker = el('nrPicker');
+  const statusEl = el('nrPickStatus');
+  picker.innerHTML = '<option value="">— Loading active leases... —</option>';
+  const ok = await fetchActiveLeases();
+  renderPickerOptions(picker, el('nrSearch').value);
+  statusEl.textContent = ok
+    ? `Synced (${activeLeases.length} active lease(s) loaded${lastExpiredHiddenCount ? `, ${lastExpiredHiddenCount} expired lease(s) hidden` : ''}). Type above to search by Lease ID, address, or tenant.`
+    : 'Could not load leases from the Sheet — try Sync Sheet again.';
+  statusEl.className = ok ? 'status' : 'status err';
+}
+
+el('nrSearch').addEventListener('input', () => renderPickerOptions(el('nrPicker'), el('nrSearch').value));
+el('nrReloadBtn').addEventListener('click', populateNonRenewPicker);
+
+function getSelectedNrLease() {
+  const idx = el('nrPicker').value;
+  return idx !== '' ? activeLeases[parseInt(idx, 10)] : null;
+}
+
+function computeNoticePeriodText() {
+  const warnEl = el('nr_noticeWarning');
+  const termISO = el('nr_termDate').value;
+  const todayVal = el('nr_today').value || todayISO();
+  if (!termISO) { el('nr_noticePeriod').value = ''; warnEl.style.display = 'none'; return; }
+
+  const termDate = new Date(termISO + 'T00:00:00');
+  const today = new Date(todayVal + 'T00:00:00');
+  const diffDays = Math.round((termDate - today) / 86400000);
+
+  if (diffDays >= 60) {
+    el('nr_noticePeriod').value = 'more than sixty (60) days';
+    warnEl.style.display = 'none';
+  } else if (diffDays >= 30) {
+    el('nr_noticePeriod').value = diffDays + ' days';
+    warnEl.style.display = 'none';
+  } else {
+    el('nr_noticePeriod').value = diffDays + ' days';
+    warnEl.textContent = '⚠️ This is under 30 days — below the typical PA statutory minimum notice period. Double-check before sending.';
+    warnEl.style.display = 'block';
+  }
+}
+
+function isM2MLease(lse) {
+  const leaseType = leaseField(lse, 'LEASE_TYPE');
+  if (leaseType) return leaseType.trim().toLowerCase().indexOf('month') === 0 || leaseType.trim().toLowerCase().indexOf('month-to-month') !== -1;
+  return !lse.endDate; // fallback: no end date on file usually means M2M
+}
+
+el('nrPicker').addEventListener('change', () => {
+  const lse = getSelectedNrLease();
+  if (!lse) {
+    el('nr_property').value = ''; el('nr_tenant').value = ''; el('nr_leaseType').value = '';
+    el('nr_termDate').value = ''; el('nr_termDate').disabled = false;
+    el('nr_noticePeriod').value = ''; el('nr_noticeWarning').style.display = 'none';
+    return;
+  }
+  el('nr_property').value = lse.address;
+  el('nr_tenant').value = lse.tenant;
+
+  const m2m = isM2MLease(lse);
+  const hintEl = el('nr_termDateHint');
+  if (m2m) {
+    el('nr_leaseType').value = 'Month-to-Month';
+    el('nr_termDate').disabled = false;
+    // Default suggestion: 30 days out from today, landlord can adjust.
+    const suggested = new Date();
+    suggested.setDate(suggested.getDate() + 30);
+    el('nr_termDate').value = suggested.toISOString().slice(0, 10);
+    hintEl.textContent = '(month-to-month lease — no fixed end date on file. Choose a termination date at least 30 days from the notice date.)';
+  } else {
+    el('nr_leaseType').value = 'Fixed-Term';
+    el('nr_termDate').disabled = true;
+    el('nr_termDate').value = toInputDate(lse.endDate);
+    hintEl.textContent = '(fixed-term lease — this is the contractual lease end date, not editable)';
+  }
+  computeNoticePeriodText();
+});
+
+el('nr_today').addEventListener('change', computeNoticePeriodText);
+el('nr_termDate').addEventListener('change', computeNoticePeriodText);
+
+function buildNonRenewRow() {
+  const lse = getSelectedNrLease();
+  const values = {
+    TODAY_DATE: fmtDate(el('nr_today').value || todayISO()),
+    TENANT_1_NAME: lse ? lse.tenant : '',
+    PROPERTY_ADDRESS: lse ? lse.address : '',
+    TERMINATION_DATE: fmtDate(el('nr_termDate').value || ''),
+    NOTICE_PERIOD_TEXT: el('nr_noticePeriod').value || ''
+  };
+  return NON_RENEWAL_COLUMNS.map(c => values[c] !== undefined ? values[c] : '');
+}
+
+function validateNonRenewBeforeBuild() {
+  const problems = [];
+  if (el('nrPicker').value === '') problems.push('Select the lease that will not be renewed.');
+  if (!el('nr_termDate').value) problems.push('Set a termination date.');
+  if (!el('nr_noticePeriod').value) problems.push('Notice period could not be calculated.');
+  return problems;
+}
+
+function setNonRenewFormDisabled(disabled) {
+  const main = el('nonRenewMain');
+  main.querySelectorAll('input, select, textarea, button').forEach(node => {
+    if (['buildNonRenewBtn', 'confirmNonRenewBtn', 'backToEditNonRenewBtn', 'resetNonRenewBtn', 'copyNonRenewBtn'].includes(node.id)) return;
+    node.disabled = disabled;
+  });
+}
+
+function renderNonRenewReviewTable(row) {
+  const tbody = el('nrOutputBody');
+  tbody.innerHTML = '';
+  NON_RENEWAL_COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(row[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('nrOutputTable').style.display = 'table';
+}
+
+let isSubmittingNonRenew = false;
+let alreadySubmittedNonRenew = false;
+
+el('buildNonRenewBtn').addEventListener('click', () => {
+  const problems = validateNonRenewBeforeBuild();
+  if (problems.length) {
+    const statusEl = el('nrBuildStatus');
+    statusEl.innerHTML = '⚠️ ' + problems.join(' ');
+    statusEl.className = 'status err';
+    return;
+  }
+  lastNonRenewRow = buildNonRenewRow();
+  renderNonRenewReviewTable(lastNonRenewRow);
+  setNonRenewFormDisabled(true);
+  el('buildNonRenewBtn').style.display = 'none';
+  el('confirmNonRenewBtn').style.display = 'inline-block';
+  el('backToEditNonRenewBtn').style.display = 'inline-block';
+  const statusEl = el('nrBuildStatus');
+  statusEl.innerHTML = '👀 <strong>Nothing has been sent yet.</strong> Review every row below — if anything looks wrong, click "Back to Edit". Only "Confirm & Generate" actually creates the PDF.';
+  statusEl.className = 'status';
+});
+
+el('backToEditNonRenewBtn').addEventListener('click', () => {
+  setNonRenewFormDisabled(false);
+  el('buildNonRenewBtn').style.display = 'inline-block';
+  el('confirmNonRenewBtn').style.display = 'none';
+  el('backToEditNonRenewBtn').style.display = 'none';
+  el('nrOutputTable').style.display = 'none';
+  el('nrBuildStatus').textContent = '';
+  el('nrBuildStatus').className = 'status';
+});
+
+el('confirmNonRenewBtn').addEventListener('click', async () => {
+  if (isSubmittingNonRenew) return;
+  if (alreadySubmittedNonRenew) {
+    if (!confirm('You already generated a Non-Renewal notice this session. Generate ANOTHER one?')) return;
+  }
+  isSubmittingNonRenew = true;
+  const confirmBtn = el('confirmNonRenewBtn');
+  confirmBtn.disabled = true;
+  el('backToEditNonRenewBtn').style.display = 'none';
+  const originalLabel = confirmBtn.textContent;
+  confirmBtn.textContent = '⏳ Generating...';
+  el('copyNonRenewBtn').disabled = false;
+
+  const statusEl = el('nrBuildStatus');
+  statusEl.textContent = '⏳ Compiling the Non-Renewal Notice PDF... (takes a few seconds)';
+  statusEl.className = 'status';
+
+  let succeeded = false;
+  if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
+    try {
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'non_renewal', row: lastNonRenewRow })
+      });
+      statusEl.textContent = '✅ Sent. Check the Lease Renewals Drive folder in a minute — the notice PDF will appear there.';
+      statusEl.className = 'status';
+      succeeded = true;
+    } catch (err) {
+      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.className = 'status err';
+    }
+  }
+
+  isSubmittingNonRenew = false;
+  if (succeeded) {
+    alreadySubmittedNonRenew = true;
+    confirmBtn.textContent = '✅ Notice Generado';
+    confirmBtn.disabled = true;
+    el('resetNonRenewBtn').style.display = 'inline-block';
+  } else {
+    confirmBtn.textContent = originalLabel;
+    confirmBtn.disabled = false;
+    el('backToEditNonRenewBtn').style.display = 'inline-block';
+  }
+});
+
+el('resetNonRenewBtn').addEventListener('click', () => {
+  if (confirm('Start another Non-Renewal notice? Current selections will be cleared.')) location.reload();
+});
+
+el('copyNonRenewBtn').addEventListener('click', async () => {
+  if (!lastNonRenewRow) return;
+  try {
+    await navigator.clipboard.writeText(lastNonRenewRow.join('\t'));
+    el('nrBuildStatus').textContent = 'Copied!';
+    el('nrBuildStatus').className = 'status';
+  } catch (err) {
+    el('nrBuildStatus').textContent = 'Could not copy automatically — select the table text manually.';
+    el('nrBuildStatus').className = 'status err';
+  }
+});
+
 // ---------- Init ----------
 
 async function init() {
   el('l_today').value = todayISO();
   el('ren_today').value = todayISO();
   el('pa_today').value = todayISO();
+  el('nr_today').value = todayISO();
   setMode('new');
   el('p_maint').value = DEFAULT_MAINT;
   el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
