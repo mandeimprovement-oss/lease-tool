@@ -204,6 +204,7 @@
 <div class="mode-toggle" style="max-width:880px;margin:16px auto 0;padding:0 20px;display:flex;gap:8px;">
   <button type="button" id="modeNewBtn" class="mode-btn">📝 New Lease</button>
   <button type="button" id="modeRenewalBtn" class="mode-btn">🔄 Renewal</button>
+  <button type="button" id="modePetAddBtn" class="mode-btn">🐾 Pet Addendum</button>
 </div>
 
 <div class="ledger" id="ledgerStrip"></div>
@@ -489,6 +490,82 @@
           <tbody id="renewalOutputBody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+</main>
+
+<main id="petAddMain" style="display:none;">
+
+  <!-- SELECT LEASE -->
+  <div class="section">
+    <div class="head"><span class="tag">1</span><h2>Select the Lease this Pet Belongs To</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Search by Lease ID, address, or tenant name</label>
+        <input id="petAddSearch" placeholder="e.g. LEASE-0004, McAllister, Ashleigh...">
+      </div>
+      <div class="prop-select-row">
+        <select id="petAddPicker"><option value="">— Loading active leases... —</option></select>
+        <button id="petAddReloadBtn" type="button" class="secondary">Sync Sheet</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Property Address</label><input id="pa_property" readonly></div>
+        <div class="field"><label>Tenant</label><input id="pa_tenant" readonly></div>
+        <div class="field"><label>Lease Start Date</label><input id="pa_leaseStart" readonly></div>
+      </div>
+      <span class="status" id="petAddPickStatus"></span>
+    </div>
+  </div>
+
+  <!-- PET DETAILS -->
+  <div class="section">
+    <div class="head"><span class="tag">2</span><h2>Pet(s) Being Added</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Is Pet Authorized?</label>
+        <select id="pa_haspet">
+          <option>Yes</option><option>Yes - ESA (Approved)</option>
+        </select>
+      </div>
+      <div id="paPetsList"></div>
+      <button class="ghost" id="paAddPetBtn" type="button">+ Add pet</button>
+      <div class="hint" style="margin-top:8px;">Standard rates: 1 Dog $50/mo · 1 Cat $40/mo · each additional pet +$20/mo. One-time fee: $300 base + $100 per additional pet.</div>
+    </div>
+  </div>
+
+  <!-- FEES -->
+  <div class="section">
+    <div class="head"><span class="tag">3</span><h2>Pet Fees</h2></div>
+    <div class="body">
+      <div class="grid">
+        <div class="field"><label>Monthly Pet Rent ($)</label><input id="pa_petrent" type="number" step="0.01"></div>
+        <div class="field"><label>Non-Refundable Pet Fee ($)</label><input id="pa_petfee" type="number" step="0.01"></div>
+      </div>
+      <button class="ghost" type="button" id="paEstimateFeesBtn">Auto-calc from pets above</button>
+      <div class="field" style="margin-top:12px;"><label>Addendum Date</label><input id="pa_today" type="date"></div>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="section">
+    <div class="head"><span class="tag">→ row</span><h2>Generate the Pet Addendum</h2></div>
+    <div class="body">
+      <div class="actions">
+        <button id="buildPetAddBtn" type="button">📄 Review Before Generating</button>
+        <button id="confirmPetAddBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate PDF</button>
+        <button id="backToEditPetAddBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
+        <button id="resetPetAddBtn" type="button" class="ghost" style="display:none;">🔄 Start Another Addendum</button>
+        <button class="secondary" id="copyPetAddBtn" type="button" disabled>Copy row to clipboard</button>
+      </div>
+      <div class="status" id="petAddBuildStatus"></div>
+      <div style="overflow-x:auto; margin-top:14px;">
+        <table class="output-table" id="petAddOutputTable" style="display:none;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody id="petAddOutputBody"></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px;">This generates a standalone PDF only — nothing is written to any Google Sheet.</p>
     </div>
   </div>
 
@@ -1962,23 +2039,257 @@ el('copyRenewalBtn').addEventListener('click', async () => {
 // ---------- Mode toggle ----------
 
 function setMode(mode) {
-  const isNew = mode === 'new';
-  el('leaseMain').style.display = isNew ? '' : 'none';
-  el('renewalMain').style.display = isNew ? 'none' : '';
-  el('ledgerStrip').style.display = isNew ? '' : 'none';
-  el('modeNewBtn').classList.toggle('active', isNew);
-  el('modeRenewalBtn').classList.toggle('active', !isNew);
-  if (!isNew && activeLeases.length === 0) populateRenewalPicker();
+  el('leaseMain').style.display = mode === 'new' ? '' : 'none';
+  el('renewalMain').style.display = mode === 'renewal' ? '' : 'none';
+  el('petAddMain').style.display = mode === 'petadd' ? '' : 'none';
+  el('ledgerStrip').style.display = mode === 'new' ? '' : 'none';
+  el('modeNewBtn').classList.toggle('active', mode === 'new');
+  el('modeRenewalBtn').classList.toggle('active', mode === 'renewal');
+  el('modePetAddBtn').classList.toggle('active', mode === 'petadd');
+  if (mode === 'renewal' && activeLeases.length === 0) populateRenewalPicker();
+  if (mode === 'petadd' && activeLeases.length === 0) populatePetAddPicker();
 }
 
 el('modeNewBtn').addEventListener('click', () => setMode('new'));
 el('modeRenewalBtn').addEventListener('click', () => setMode('renewal'));
+el('modePetAddBtn').addEventListener('click', () => setMode('petadd'));
+
+// ---------- Pet Addendum Mode ----------
+
+const PET_ADD_COLUMNS = ["TODAY_DATE", "LEASE_START_DATE", "TENANT_1_NAME", "PROPERTY_ADDRESS",
+  "HAS_PET_YN", "PET_DETAILS_BLOCK", "NON_REFUNDABLE_PET_FEE", "MONTHLY_PET_RENT", "TENANT_SIGNATURE_BLOCKS"];
+
+let paPets = [];
+let selectedPaLeaseIdx = '';
+let lastPetAddRow = null;
+
+async function populatePetAddPicker() {
+  const picker = el('petAddPicker');
+  const statusEl = el('petAddPickStatus');
+  picker.innerHTML = '<option value="">— Loading active leases... —</option>';
+  const ok = await fetchActiveLeases();
+  renderPickerOptions(picker, el('petAddSearch').value);
+  statusEl.textContent = ok
+    ? `Synced (${activeLeases.length} active lease(s) loaded${lastExpiredHiddenCount ? `, ${lastExpiredHiddenCount} expired lease(s) hidden` : ''}). Type above to search by Lease ID, address, or tenant.`
+    : 'Could not load leases from the Sheet — try Sync Sheet again.';
+  statusEl.className = ok ? 'status' : 'status err';
+}
+
+el('petAddSearch').addEventListener('input', () => renderPickerOptions(el('petAddPicker'), el('petAddSearch').value));
+el('petAddReloadBtn').addEventListener('click', populatePetAddPicker);
+
+el('petAddPicker').addEventListener('change', () => {
+  selectedPaLeaseIdx = el('petAddPicker').value;
+  if (selectedPaLeaseIdx === '') {
+    el('pa_property').value = ''; el('pa_tenant').value = ''; el('pa_leaseStart').value = '';
+    return;
+  }
+  const lse = activeLeases[parseInt(selectedPaLeaseIdx, 10)];
+  if (!lse) return;
+  el('pa_property').value = lse.address;
+  el('pa_tenant').value = lse.tenant;
+  el('pa_leaseStart').value = leaseField(lse, 'LEASE_START_DATE');
+});
+
+function renderPaPets() {
+  const wrap = el('paPetsList');
+  wrap.innerHTML = '';
+  paPets.forEach((p) => {
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <button type="button" class="remove danger" data-id="${p.id}">Remove</button>
+      <div class="grid g3">
+        <div class="field"><label>Type</label><input data-field="type" data-id="${p.id}" value="${p.type || ''}" placeholder="Dog / Cat"></div>
+        <div class="field"><label>Breed</label><input data-field="breed" data-id="${p.id}" value="${p.breed || ''}"></div>
+        <div class="field"><label>Name</label><input data-field="name" data-id="${p.id}" value="${p.name || ''}"></div>
+        <div class="field"><label>Weight</label><input data-field="weight" data-id="${p.id}" value="${p.weight || ''}" placeholder="30 lbs"></div>
+        <div class="field"><label>Color</label><input data-field="color" data-id="${p.id}" value="${p.color || ''}"></div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('input').forEach(inp => inp.addEventListener('input', (e) => {
+    const id = e.target.dataset.id, field = e.target.dataset.field;
+    const p = paPets.find(x => x.id === id);
+    if (p) p[field] = e.target.value;
+  }));
+  wrap.querySelectorAll('button.remove').forEach(b => b.addEventListener('click', (e) => {
+    paPets = paPets.filter(p => p.id !== e.target.dataset.id);
+    renderPaPets();
+  }));
+}
+
+el('paAddPetBtn').addEventListener('click', () => {
+  paPets.push({ id: uid(), type: '', breed: '', name: '', weight: '', color: '' });
+  renderPaPets();
+});
+
+el('paEstimateFeesBtn').addEventListener('click', () => {
+  const named = paPets.filter(p => p.type);
+  if (!named.length) {
+    el('petAddBuildStatus').textContent = 'Add at least one pet with a Type first.';
+    el('petAddBuildStatus').className = 'status err';
+    return;
+  }
+  const first = (named[0].type || '').trim().toLowerCase();
+  const monthlyBase = first === 'cat' ? 40 : 50;
+  const feeBase = 300;
+  const extra = named.length - 1;
+  el('pa_petrent').value = (monthlyBase + extra * 20).toFixed(2);
+  el('pa_petfee').value = (feeBase + extra * 100).toFixed(2);
+  el('petAddBuildStatus').textContent = `Estimated from ${named.length} pet(s). Review and adjust if needed.`;
+  el('petAddBuildStatus').className = 'status';
+});
+
+function buildPetAddRow() {
+  const lse = selectedPaLeaseIdx !== '' ? activeLeases[parseInt(selectedPaLeaseIdx, 10)] : null;
+  const petDetailsBlock = paPets.filter(p => p.name || p.type).map((p, i) =>
+    `Pet #${i + 1}: ${p.type || ''} | Breed: ${p.breed || 'N/A'} | Name: ${p.name || ''} | Weight: ${p.weight || ''} | Color: ${p.color || ''}`
+  ).join('\n');
+
+  const values = {
+    TODAY_DATE: fmtDate(el('pa_today').value || todayISO()),
+    LEASE_START_DATE: lse ? leaseField(lse, 'LEASE_START_DATE') : '',
+    TENANT_1_NAME: lse ? lse.tenant : '',
+    PROPERTY_ADDRESS: lse ? lse.address : '',
+    HAS_PET_YN: el('pa_haspet').value,
+    PET_DETAILS_BLOCK: petDetailsBlock,
+    NON_REFUNDABLE_PET_FEE: fmtMoney(el('pa_petfee').value || '0'),
+    MONTHLY_PET_RENT: fmtMoney(el('pa_petrent').value || '0'),
+    TENANT_SIGNATURE_BLOCKS: lse ? adultsListToSignatureBlocks(leaseField(lse, 'ADULT_TENANTS_LIST')) : ''
+  };
+  return PET_ADD_COLUMNS.map(c => values[c] !== undefined ? values[c] : '');
+}
+
+function validatePetAddBeforeBuild() {
+  const problems = [];
+  if (selectedPaLeaseIdx === '') problems.push('Select the lease this pet belongs to.');
+  if (!paPets.some(p => p.type)) problems.push('Add at least one pet with a Type.');
+  if (!el('pa_petrent').value && !el('pa_petfee').value) problems.push('Enter (or auto-calc) the pet fees.');
+  return problems;
+}
+
+function setPetAddFormDisabled(disabled) {
+  const main = el('petAddMain');
+  main.querySelectorAll('input, select, textarea, button').forEach(node => {
+    if (['buildPetAddBtn', 'confirmPetAddBtn', 'backToEditPetAddBtn', 'resetPetAddBtn', 'copyPetAddBtn'].includes(node.id)) return;
+    node.disabled = disabled;
+  });
+}
+
+function renderPetAddReviewTable(row) {
+  const tbody = el('petAddOutputBody');
+  tbody.innerHTML = '';
+  PET_ADD_COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(row[i] || '').toString().replace(/</g, '&lt;')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('petAddOutputTable').style.display = 'table';
+}
+
+let isSubmittingPetAdd = false;
+let alreadySubmittedPetAdd = false;
+
+el('buildPetAddBtn').addEventListener('click', () => {
+  const problems = validatePetAddBeforeBuild();
+  if (problems.length) {
+    const statusEl = el('petAddBuildStatus');
+    statusEl.innerHTML = '⚠️ ' + problems.join(' ');
+    statusEl.className = 'status err';
+    return;
+  }
+  lastPetAddRow = buildPetAddRow();
+  renderPetAddReviewTable(lastPetAddRow);
+  setPetAddFormDisabled(true);
+  el('buildPetAddBtn').style.display = 'none';
+  el('confirmPetAddBtn').style.display = 'inline-block';
+  el('backToEditPetAddBtn').style.display = 'inline-block';
+  const statusEl = el('petAddBuildStatus');
+  statusEl.innerHTML = '👀 <strong>Nothing has been sent yet.</strong> Review every row below — if anything looks wrong, click "Back to Edit". Only "Confirm & Generate" actually creates the PDF.';
+  statusEl.className = 'status';
+});
+
+el('backToEditPetAddBtn').addEventListener('click', () => {
+  setPetAddFormDisabled(false);
+  el('buildPetAddBtn').style.display = 'inline-block';
+  el('confirmPetAddBtn').style.display = 'none';
+  el('backToEditPetAddBtn').style.display = 'none';
+  el('petAddOutputTable').style.display = 'none';
+  el('petAddBuildStatus').textContent = '';
+  el('petAddBuildStatus').className = 'status';
+});
+
+el('confirmPetAddBtn').addEventListener('click', async () => {
+  if (isSubmittingPetAdd) return;
+  if (alreadySubmittedPetAdd) {
+    if (!confirm('You already generated a Pet Addendum this session. Generate ANOTHER one?')) return;
+  }
+  isSubmittingPetAdd = true;
+  const confirmBtn = el('confirmPetAddBtn');
+  confirmBtn.disabled = true;
+  el('backToEditPetAddBtn').style.display = 'none';
+  const originalLabel = confirmBtn.textContent;
+  confirmBtn.textContent = '⏳ Generating...';
+  el('copyPetAddBtn').disabled = false;
+
+  const statusEl = el('petAddBuildStatus');
+  statusEl.textContent = '⏳ Compiling the Pet Addendum PDF... (takes a few seconds)';
+  statusEl.className = 'status';
+
+  let succeeded = false;
+  if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
+    try {
+      await fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'pet_addendum', row: lastPetAddRow })
+      });
+      statusEl.textContent = '✅ Sent. Check the New Lease Agreements Drive folder in a minute — the addendum PDF will appear there.';
+      statusEl.className = 'status';
+      succeeded = true;
+    } catch (err) {
+      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.className = 'status err';
+    }
+  }
+
+  isSubmittingPetAdd = false;
+  if (succeeded) {
+    alreadySubmittedPetAdd = true;
+    confirmBtn.textContent = '✅ Addendum Generado';
+    confirmBtn.disabled = true;
+    el('resetPetAddBtn').style.display = 'inline-block';
+  } else {
+    confirmBtn.textContent = originalLabel;
+    confirmBtn.disabled = false;
+    el('backToEditPetAddBtn').style.display = 'inline-block';
+  }
+});
+
+el('resetPetAddBtn').addEventListener('click', () => {
+  if (confirm('Start another Pet Addendum? Current selections will be cleared.')) location.reload();
+});
+
+el('copyPetAddBtn').addEventListener('click', async () => {
+  if (!lastPetAddRow) return;
+  try {
+    await navigator.clipboard.writeText(lastPetAddRow.join('\t'));
+    el('petAddBuildStatus').textContent = 'Copied!';
+    el('petAddBuildStatus').className = 'status';
+  } catch (err) {
+    el('petAddBuildStatus').textContent = 'Could not copy automatically — select the table text manually.';
+    el('petAddBuildStatus').className = 'status err';
+  }
+});
 
 // ---------- Init ----------
 
 async function init() {
   el('l_today').value = todayISO();
   el('ren_today').value = todayISO();
+  el('pa_today').value = todayISO();
   setMode('new');
   el('p_maint').value = DEFAULT_MAINT;
   el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
