@@ -206,6 +206,7 @@
   <button type="button" id="modeRenewalBtn" class="mode-btn">🔄 Renewal</button>
   <button type="button" id="modePetAddBtn" class="mode-btn">🐾 Pet Addendum</button>
   <button type="button" id="modeNonRenewBtn" class="mode-btn">🚫 Non-Renewal</button>
+  <button type="button" id="modeDepositBtn" class="mode-btn">💰 Deposit Installments</button>
 </div>
 
 <div class="ledger" id="ledgerStrip"></div>
@@ -625,6 +626,70 @@
         <table class="output-table" id="nrOutputTable" style="display:none;">
           <thead><tr><th>Column</th><th>Value</th></tr></thead>
           <tbody id="nrOutputBody"></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px;">This generates a standalone PDF only — nothing is written to any Google Sheet.</p>
+    </div>
+  </div>
+
+</main>
+
+<main id="depositMain" style="display:none;">
+
+  <!-- SELECT LEASE -->
+  <div class="section">
+    <div class="head"><span class="tag">1</span><h2>Select the Lease</h2></div>
+    <div class="body">
+      <div class="field">
+        <label>Search by Lease ID, address, or tenant name</label>
+        <input id="depSearch" placeholder="e.g. LEASE-0004, McAllister, Ashleigh...">
+      </div>
+      <div class="prop-select-row">
+        <select id="depPicker"><option value="">— Loading active leases... —</option></select>
+        <button id="depReloadBtn" type="button" class="secondary">Sync Sheet</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Property Address</label><input id="dep_property" readonly></div>
+        <div class="field"><label>Tenant</label><input id="dep_tenant" readonly></div>
+        <div class="field"><label>Total Deposit Required ($)</label><input id="dep_total" readonly></div>
+      </div>
+      <span class="status" id="depPickStatus"></span>
+    </div>
+  </div>
+
+  <!-- PAYMENT PLAN -->
+  <div class="section">
+    <div class="head"><span class="tag">2</span><h2>Payment Plan</h2></div>
+    <div class="body">
+      <div class="field"><label>Agreement Date</label><input id="dep_today" type="date"></div>
+      <div class="grid">
+        <div class="field"><label>Initial Payment Amount ($)</label><input id="dep_initial" type="number" step="0.01"></div>
+        <div class="field"><label># of Installments</label><input id="dep_numInstallments" type="number" min="1" step="1" value="2"></div>
+      </div>
+      <div class="field"><label>Remaining Balance ($) <span class="hint">(auto = total − initial payment)</span></label><input id="dep_remaining" readonly></div>
+      <div class="field"><label>Installment Schedule <span class="hint">(auto — one installment per month, starting the month after lease start)</span></label>
+        <textarea id="dep_schedule" readonly rows="4" style="width:100%;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+      <div class="hint" id="dep_warning" style="display:none;color:var(--rust);margin-top:6px;"></div>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="section">
+    <div class="head"><span class="tag">→ row</span><h2>Generate the Deposit Installment Agreement</h2></div>
+    <div class="body">
+      <div class="actions">
+        <button id="buildDepositBtn" type="button">📄 Review Before Generating</button>
+        <button id="confirmDepositBtn" type="button" class="success" style="display:none;">✅ Confirm & Generate PDF</button>
+        <button id="backToEditDepositBtn" type="button" class="ghost" style="display:none;">⬅️ Back to Edit</button>
+        <button id="resetDepositBtn" type="button" class="ghost" style="display:none;">🔄 Start Another Agreement</button>
+        <button class="secondary" id="copyDepositBtn" type="button" disabled>Copy row to clipboard</button>
+      </div>
+      <div class="status" id="depBuildStatus"></div>
+      <div style="overflow-x:auto; margin-top:14px;">
+        <table class="output-table" id="depOutputTable" style="display:none;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody id="depOutputBody"></tbody>
         </table>
       </div>
       <p class="hint" style="margin-top:10px;">This generates a standalone PDF only — nothing is written to any Google Sheet.</p>
@@ -2112,20 +2177,24 @@ function setMode(mode) {
   el('renewalMain').style.display = mode === 'renewal' ? '' : 'none';
   el('petAddMain').style.display = mode === 'petadd' ? '' : 'none';
   el('nonRenewMain').style.display = mode === 'nonrenew' ? '' : 'none';
+  el('depositMain').style.display = mode === 'deposit' ? '' : 'none';
   el('ledgerStrip').style.display = mode === 'new' ? '' : 'none';
   el('modeNewBtn').classList.toggle('active', mode === 'new');
   el('modeRenewalBtn').classList.toggle('active', mode === 'renewal');
   el('modePetAddBtn').classList.toggle('active', mode === 'petadd');
   el('modeNonRenewBtn').classList.toggle('active', mode === 'nonrenew');
+  el('modeDepositBtn').classList.toggle('active', mode === 'deposit');
   if (mode === 'renewal' && activeLeases.length === 0) populateRenewalPicker();
   if (mode === 'petadd' && activeLeases.length === 0) populatePetAddPicker();
   if (mode === 'nonrenew' && activeLeases.length === 0) populateNonRenewPicker();
+  if (mode === 'deposit' && activeLeases.length === 0) populateDepositPicker();
 }
 
 el('modeNewBtn').addEventListener('click', () => setMode('new'));
 el('modeRenewalBtn').addEventListener('click', () => setMode('renewal'));
 el('modePetAddBtn').addEventListener('click', () => setMode('petadd'));
 el('modeNonRenewBtn').addEventListener('click', () => setMode('nonrenew'));
+el('modeDepositBtn').addEventListener('click', () => setMode('deposit'));
 
 // ---------- Pet Addendum Mode ----------
 
@@ -2598,6 +2667,244 @@ el('copyNonRenewBtn').addEventListener('click', async () => {
   }
 });
 
+// ---------- Deposit Installment Mode ----------
+
+const DEPOSIT_COLUMNS = ["TODAY_DATE", "TENANT_1_NAME", "PROPERTY_ADDRESS", "TOTAL_DEPOSIT_AMOUNT",
+  "INITIAL_PAYMENT_AMOUNT", "REMAINING_BALANCE", "INSTALLMENT_SCHEDULE_TEXT", "TENANT_SIGNATURE_BLOCKS"];
+
+let lastDepositRow = null;
+
+async function populateDepositPicker() {
+  const picker = el('depPicker');
+  const statusEl = el('depPickStatus');
+  picker.innerHTML = '<option value="">— Loading active leases... —</option>';
+  const ok = await fetchActiveLeases();
+  renderPickerOptions(picker, el('depSearch').value);
+  statusEl.textContent = ok
+    ? `Synced (${activeLeases.length} active lease(s) loaded${lastExpiredHiddenCount ? `, ${lastExpiredHiddenCount} expired lease(s) hidden` : ''}). Type above to search by Lease ID, address, or tenant.`
+    : 'Could not load leases from the Sheet — try Sync Sheet again.';
+  statusEl.className = ok ? 'status' : 'status err';
+}
+
+el('depSearch').addEventListener('input', () => renderPickerOptions(el('depPicker'), el('depSearch').value));
+el('depReloadBtn').addEventListener('click', populateDepositPicker);
+
+function getSelectedDepositLease() {
+  const idx = el('depPicker').value;
+  return idx !== '' ? activeLeases[parseInt(idx, 10)] : null;
+}
+
+function monthYearFromISO(iso, monthsToAdd) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setMonth(d.getMonth() + monthsToAdd);
+  return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function computeDepositPlan() {
+  const warnEl = el('dep_warning');
+  const lse = getSelectedDepositLease();
+  const totalRaw = el('dep_total').value;
+  const total = parseMoney(totalRaw);
+  const initial = parseFloat(el('dep_initial').value) || 0;
+  const numInstallments = Math.max(1, parseInt(el('dep_numInstallments').value, 10) || 1);
+  const remaining = Math.max(0, total - initial);
+
+  el('dep_remaining').value = total ? fmtMoney(remaining.toFixed(2)) : '';
+
+  if (!lse || !total) {
+    el('dep_schedule').value = '';
+    warnEl.style.display = 'none';
+    return;
+  }
+
+  const leaseStartISO = toInputDate(leaseField(lse, 'LEASE_START_DATE'));
+  if (!leaseStartISO) {
+    el('dep_schedule').value = 'Could not determine Lease Start Date for this lease — enter the schedule manually in the generated document.';
+    warnEl.style.display = 'none';
+    return;
+  }
+
+  const perInstallment = remaining / numInstallments;
+  const lines = [];
+  let runningTotal = 0;
+  for (let i = 1; i <= numInstallments; i++) {
+    // Last installment absorbs any rounding remainder so the total matches exactly.
+    const amount = (i === numInstallments) ? (remaining - runningTotal) : Math.round(perInstallment * 100) / 100;
+    runningTotal += amount;
+    const monthLabel = monthYearFromISO(leaseStartISO, i);
+    lines.push(`Installment ${i}: ${fmtMoney(amount.toFixed(2))} — due with the rent payment for ${monthLabel}.`);
+  }
+  el('dep_schedule').value = lines.join('\n');
+
+  if (initial > total) {
+    warnEl.textContent = '⚠️ Initial payment is greater than the total deposit — check the amounts.';
+    warnEl.style.display = 'block';
+  } else {
+    warnEl.style.display = 'none';
+  }
+}
+
+el('depPicker').addEventListener('change', () => {
+  const lse = getSelectedDepositLease();
+  if (!lse) {
+    el('dep_property').value = ''; el('dep_tenant').value = ''; el('dep_total').value = '';
+    el('dep_schedule').value = ''; el('dep_remaining').value = '';
+    return;
+  }
+  el('dep_property').value = lse.address;
+  el('dep_tenant').value = lse.tenant;
+  el('dep_total').value = leaseField(lse, 'SECURITY_DEPOSIT_AMOUNT');
+  computeDepositPlan();
+});
+
+el('dep_initial').addEventListener('input', computeDepositPlan);
+el('dep_numInstallments').addEventListener('input', computeDepositPlan);
+
+function buildDepositRow() {
+  const lse = getSelectedDepositLease();
+  const values = {
+    TODAY_DATE: fmtDate(el('dep_today').value || todayISO()),
+    TENANT_1_NAME: lse ? lse.tenant : '',
+    PROPERTY_ADDRESS: lse ? lse.address : '',
+    TOTAL_DEPOSIT_AMOUNT: fmtMoney(el('dep_total').value || '0'),
+    INITIAL_PAYMENT_AMOUNT: fmtMoney(el('dep_initial').value || '0'),
+    REMAINING_BALANCE: el('dep_remaining').value || fmtMoney('0'),
+    INSTALLMENT_SCHEDULE_TEXT: el('dep_schedule').value || '',
+    TENANT_SIGNATURE_BLOCKS: lse ? adultsListToSignatureBlocks(leaseField(lse, 'ADULT_TENANTS_LIST')) : ''
+  };
+  return DEPOSIT_COLUMNS.map(c => values[c] !== undefined ? values[c] : '');
+}
+
+function validateDepositBeforeBuild() {
+  const problems = [];
+  if (el('depPicker').value === '') problems.push('Select the lease.');
+  if (!el('dep_initial').value) problems.push('Enter the initial payment amount.');
+  if (!el('dep_schedule').value) problems.push('Installment schedule could not be calculated.');
+  return problems;
+}
+
+function setDepositFormDisabled(disabled) {
+  const main = el('depositMain');
+  main.querySelectorAll('input, select, textarea, button').forEach(node => {
+    if (['buildDepositBtn', 'confirmDepositBtn', 'backToEditDepositBtn', 'resetDepositBtn', 'copyDepositBtn'].includes(node.id)) return;
+    node.disabled = disabled;
+  });
+}
+
+function renderDepositReviewTable(row) {
+  const tbody = el('depOutputBody');
+  tbody.innerHTML = '';
+  DEPOSIT_COLUMNS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th>${c}</th><td>${(row[i] || '').toString().replace(/</g, '&lt;').replace(/\n/g, '<br>')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('depOutputTable').style.display = 'table';
+}
+
+let isSubmittingDeposit = false;
+let alreadySubmittedDeposit = false;
+
+el('buildDepositBtn').addEventListener('click', () => {
+  const problems = validateDepositBeforeBuild();
+  if (problems.length) {
+    const statusEl = el('depBuildStatus');
+    statusEl.innerHTML = '⚠️ ' + problems.join(' ');
+    statusEl.className = 'status err';
+    return;
+  }
+  lastDepositRow = buildDepositRow();
+  renderDepositReviewTable(lastDepositRow);
+  setDepositFormDisabled(true);
+  el('buildDepositBtn').style.display = 'none';
+  el('confirmDepositBtn').style.display = 'inline-block';
+  el('backToEditDepositBtn').style.display = 'inline-block';
+  const statusEl = el('depBuildStatus');
+  statusEl.innerHTML = '👀 <strong>Nothing has been sent yet.</strong> Review the payment schedule below carefully — if anything looks wrong, click "Back to Edit". Only "Confirm & Generate" actually creates the PDF.';
+  statusEl.className = 'status';
+});
+
+el('backToEditDepositBtn').addEventListener('click', () => {
+  setDepositFormDisabled(false);
+  el('buildDepositBtn').style.display = 'inline-block';
+  el('confirmDepositBtn').style.display = 'none';
+  el('backToEditDepositBtn').style.display = 'none';
+  el('depOutputTable').style.display = 'none';
+  el('depBuildStatus').textContent = '';
+  el('depBuildStatus').className = 'status';
+});
+
+el('confirmDepositBtn').addEventListener('click', async () => {
+  if (isSubmittingDeposit) return;
+  if (alreadySubmittedDeposit) {
+    if (!confirm('You already generated a Deposit Installment Agreement this session. Generate ANOTHER one?')) return;
+  }
+  isSubmittingDeposit = true;
+  const confirmBtn = el('confirmDepositBtn');
+  confirmBtn.disabled = true;
+  el('backToEditDepositBtn').style.display = 'none';
+  const originalLabel = confirmBtn.textContent;
+  confirmBtn.textContent = '⏳ Generating...';
+  el('copyDepositBtn').disabled = false;
+
+  const statusEl = el('depBuildStatus');
+  statusEl.textContent = '⏳ Compiling the Deposit Installment Agreement PDF... (takes a few seconds)';
+  statusEl.className = 'status';
+
+  let succeeded = false;
+  if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
+    try {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'deposit_installment', row: lastDepositRow })
+      });
+      const json = await res.json();
+      if (json.result === 'success') {
+        statusEl.innerHTML = '✅ Deposit Installment Agreement generated.' + (json.note ? ' <em>' + json.note + '</em>' : '') +
+          (json.pdfUrl ? ' <a href="' + json.pdfUrl + '" target="_blank">Open PDF</a>' : '');
+        statusEl.className = 'status';
+        succeeded = true;
+      } else {
+        statusEl.textContent = '❌ Apps Script error: ' + (json.error || 'unknown error') + '. Nothing was saved — you can retry.';
+        statusEl.className = 'status err';
+      }
+    } catch (err) {
+      statusEl.innerHTML = '⚠️ Network hiccup reaching the Apps Script (' + err.message + '). <strong>This does NOT necessarily mean it failed</strong> — check the Drive folder before retrying, to avoid a duplicate.';
+      statusEl.className = 'status err';
+      el('resetDepositBtn').style.display = 'inline-block';
+    }
+  }
+
+  isSubmittingDeposit = false;
+  if (succeeded) {
+    alreadySubmittedDeposit = true;
+    confirmBtn.textContent = '✅ Agreement Generado';
+    confirmBtn.disabled = true;
+    el('resetDepositBtn').style.display = 'inline-block';
+  } else {
+    confirmBtn.textContent = originalLabel;
+    confirmBtn.disabled = false;
+    el('backToEditDepositBtn').style.display = 'inline-block';
+  }
+});
+
+el('resetDepositBtn').addEventListener('click', () => {
+  if (confirm('Start another Deposit Installment Agreement? Current selections will be cleared.')) location.reload();
+});
+
+el('copyDepositBtn').addEventListener('click', async () => {
+  if (!lastDepositRow) return;
+  try {
+    await navigator.clipboard.writeText(lastDepositRow.join('\t'));
+    el('depBuildStatus').textContent = 'Copied!';
+    el('depBuildStatus').className = 'status';
+  } catch (err) {
+    el('depBuildStatus').textContent = 'Could not copy automatically — select the table text manually.';
+    el('depBuildStatus').className = 'status err';
+  }
+});
+
 // ---------- Init ----------
 
 async function init() {
@@ -2605,6 +2912,7 @@ async function init() {
   el('ren_today').value = todayISO();
   el('pa_today').value = todayISO();
   el('nr_today').value = todayISO();
+  el('dep_today').value = todayISO();
   setMode('new');
   el('p_maint').value = DEFAULT_MAINT;
   el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
