@@ -1463,8 +1463,9 @@ el('confirmSendBtn').addEventListener('click', async () => {
         statusEl.className = 'status err';
       }
     } catch (err) {
-      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). No row was saved — you can retry.';
+      statusEl.innerHTML = '⚠️ Network hiccup reaching the Apps Script (' + err.message + '). <strong>This does NOT necessarily mean it failed</strong> — Google Apps Script sometimes takes a while to respond. Check Sheet1 / the Drive folder before retrying, to avoid creating a duplicate.';
       statusEl.className = 'status err';
+      el('resetBuildBtn').style.display = 'inline-block';
     }
   } else {
     statusEl.textContent = 'Row built below. Copy it, then paste into the first empty row of Sheet1 (starting at column A).';
@@ -2067,8 +2068,9 @@ el('confirmRenewalBtn').addEventListener('click', async () => {
         statusEl.className = 'status err';
       }
     } catch (err) {
-      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.innerHTML = '⚠️ Network hiccup reaching the Apps Script (' + err.message + '). <strong>This does NOT necessarily mean it failed</strong> — check the Renewals sheet / Drive folder before retrying, to avoid a duplicate.';
       statusEl.className = 'status err';
+      el('resetRenewalBtn').style.display = 'inline-block';
     }
   }
 
@@ -2331,8 +2333,9 @@ el('confirmPetAddBtn').addEventListener('click', async () => {
         statusEl.className = 'status err';
       }
     } catch (err) {
-      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.innerHTML = '⚠️ Network hiccup reaching the Apps Script (' + err.message + '). <strong>This does NOT necessarily mean it failed</strong> — check Sheet1 / Drive folder before retrying, to avoid a duplicate.';
       statusEl.className = 'status err';
+      el('resetPetAddBtn').style.display = 'inline-block';
     }
   }
 
@@ -2560,8 +2563,9 @@ el('confirmNonRenewBtn').addEventListener('click', async () => {
         statusEl.className = 'status err';
       }
     } catch (err) {
-      statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
+      statusEl.innerHTML = '⚠️ Network hiccup reaching the Apps Script (' + err.message + '). <strong>This does NOT necessarily mean it failed</strong> — check the Drive folder before retrying, to avoid a duplicate.';
       statusEl.className = 'status err';
+      el('resetNonRenewBtn').style.display = 'inline-block';
     }
   }
 
@@ -2606,6 +2610,7 @@ async function init() {
   el('p_elec').value = 'Tenant'; el('p_gas').value = 'Tenant'; el('p_water').value = 'Tenant';
   el('p_trash').value = 'Tenant'; el('p_snow').value = 'Tenant'; el('p_lawn').value = 'Tenant';
   el('r_garbagewindow').value = 'N/A'; el('r_garbagefee').value = 'N/A';
+  el('r_petrent').value = 'N/A'; el('r_petfee').value = 'N/A';
   adults.push({ id: uid(), name: '', dob: '', ssn: '' });
   renderAdults(); renderMinors(); renderPets(); updateLedger();
   await populatePropertyList();
