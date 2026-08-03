@@ -1447,22 +1447,21 @@ el('confirmSendBtn').addEventListener('click', async () => {
 
   if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
     try {
-      // Google Apps Script Web Apps don't send back proper CORS headers, so the
-      // browser blocks us from reading the response no matter what we do. mode:
-      // 'no-cors' stops the browser from throwing "Failed to fetch" for that reason —
-      // the request still really gets delivered and the script still runs, we just
-      // can't read what it replied. Genuine connectivity failures (no internet, wrong
-      // URL, deployment deleted) still throw and land in the catch block below.
-      await fetch(WEB_APP_URL, {
+      const res = await fetch(WEB_APP_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ row: lastRow })
       });
-
-      statusEl.textContent = '✅ Data sent to Google Sheets. Check the Drive folder in a minute or two — Autocrat will generate the PDF automatically.';
-      statusEl.className = 'status';
-      succeeded = true;
+      const json = await res.json();
+      if (json.result === 'success') {
+        statusEl.innerHTML = '✅ Data sent to Google Sheets and PDF generated.' + (json.note ? ' <em>' + json.note + '</em>' : '') +
+          (json.pdfUrl ? ' <a href="' + json.pdfUrl + '" target="_blank">Open PDF</a>' : '');
+        statusEl.className = 'status';
+        succeeded = true;
+      } else {
+        statusEl.textContent = '❌ Apps Script error: ' + (json.error || 'unknown error') + '. No row was saved — you can retry.';
+        statusEl.className = 'status err';
+      }
     } catch (err) {
       statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). No row was saved — you can retry.';
       statusEl.className = 'status err';
@@ -2052,15 +2051,21 @@ el('confirmRenewalBtn').addEventListener('click', async () => {
   let succeeded = false;
   if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
     try {
-      await fetch(WEB_APP_URL, {
+      const res = await fetch(WEB_APP_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'renewal', row: lastRenewalRow })
       });
-      statusEl.textContent = '✅ Sent. Check the Lease Renewals Drive folder in a minute — the letter PDF will appear there.';
-      statusEl.className = 'status';
-      succeeded = true;
+      const json = await res.json();
+      if (json.result === 'success') {
+        statusEl.innerHTML = '✅ Renewal letter generated.' + (json.note ? ' <em>' + json.note + '</em>' : '') +
+          (json.pdfUrl ? ' <a href="' + json.pdfUrl + '" target="_blank">Open PDF</a>' : '');
+        statusEl.className = 'status';
+        succeeded = true;
+      } else {
+        statusEl.textContent = '❌ Apps Script error: ' + (json.error || 'unknown error') + '. Nothing was saved — you can retry.';
+        statusEl.className = 'status err';
+      }
     } catch (err) {
       statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
       statusEl.className = 'status err';
@@ -2310,15 +2315,21 @@ el('confirmPetAddBtn').addEventListener('click', async () => {
   let succeeded = false;
   if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
     try {
-      await fetch(WEB_APP_URL, {
+      const res = await fetch(WEB_APP_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'pet_addendum', leaseId: (getSelectedPaLease() || {}).leaseId || '', row: lastPetAddRow })
       });
-      statusEl.textContent = '✅ Sent. Check the New Lease Agreements Drive folder in a minute — the addendum PDF will appear there.';
-      statusEl.className = 'status';
-      succeeded = true;
+      const json = await res.json();
+      if (json.result === 'success') {
+        statusEl.innerHTML = '✅ Pet Addendum generated.' + (json.note ? ' <em>' + json.note + '</em>' : '') +
+          (json.pdfUrl ? ' <a href="' + json.pdfUrl + '" target="_blank">Open PDF</a>' : '');
+        statusEl.className = 'status';
+        succeeded = true;
+      } else {
+        statusEl.textContent = '❌ Apps Script error: ' + (json.error || 'unknown error') + '. Nothing was saved — you can retry.';
+        statusEl.className = 'status err';
+      }
     } catch (err) {
       statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
       statusEl.className = 'status err';
@@ -2533,15 +2544,21 @@ el('confirmNonRenewBtn').addEventListener('click', async () => {
   let succeeded = false;
   if (WEB_APP_URL && !WEB_APP_URL.includes("AKfycbx...")) {
     try {
-      await fetch(WEB_APP_URL, {
+      const res = await fetch(WEB_APP_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'non_renewal', row: lastNonRenewRow })
       });
-      statusEl.textContent = '✅ Sent. Check the Lease Renewals Drive folder in a minute — the notice PDF will appear there.';
-      statusEl.className = 'status';
-      succeeded = true;
+      const json = await res.json();
+      if (json.result === 'success') {
+        statusEl.innerHTML = '✅ Non-Renewal Notice generated.' + (json.note ? ' <em>' + json.note + '</em>' : '') +
+          (json.pdfUrl ? ' <a href="' + json.pdfUrl + '" target="_blank">Open PDF</a>' : '');
+        statusEl.className = 'status';
+        succeeded = true;
+      } else {
+        statusEl.textContent = '❌ Apps Script error: ' + (json.error || 'unknown error') + '. Nothing was saved — you can retry.';
+        statusEl.className = 'status err';
+      }
     } catch (err) {
       statusEl.textContent = '❌ Could not reach the Apps Script (' + err.message + '). Nothing was saved — you can retry.';
       statusEl.className = 'status err';
