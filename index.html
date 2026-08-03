@@ -565,7 +565,7 @@
           <tbody id="petAddOutputBody"></tbody>
         </table>
       </div>
-      <p class="hint" style="margin-top:10px;">This generates a standalone PDF only — nothing is written to any Google Sheet.</p>
+      <p class="hint" style="margin-top:10px;">This generates the PDF and also updates the pet fields on the matching lease's row in Sheet1 (HAS_PET_YN, pet details, pet rent/fee, and total monthly rent).</p>
     </div>
   </div>
 
@@ -2244,7 +2244,7 @@ el('confirmPetAddBtn').addEventListener('click', async () => {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ mode: 'pet_addendum', row: lastPetAddRow })
+        body: JSON.stringify({ mode: 'pet_addendum', leaseId: (activeLeases[parseInt(selectedPaLeaseIdx, 10)] || {}).leaseId || '', row: lastPetAddRow })
       });
       statusEl.textContent = '✅ Sent. Check the New Lease Agreements Drive folder in a minute — the addendum PDF will appear there.';
       statusEl.className = 'status';
